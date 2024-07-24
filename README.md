@@ -19,3 +19,4 @@ LRB
 GDRB
 RB3
 Expect a lot of updates to the repo, as this is a daily project for me.
+Also, feel free to submit a issue if one occurs. I'll do my best to fix it.
