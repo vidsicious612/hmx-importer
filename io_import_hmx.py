@@ -37,42 +37,6 @@ def b_float(f):
 def l_float(f):
     return struct.unpack('f', f.read(4))[0]
     
-def b_ushort(f):
-    return struct.unpack('>H', f.read(2))[0]
-    
-def rb2_vertex(f):
-    return struct.unpack('>ffff', f.read(16))
-
-def rb2_normals(f):
-    return struct.unpack('>ffff', f.read(16))
-    
-def tbrb_vertex(f):
-    return struct.unpack('>fff', f.read(12))    
-
-def tbrb_normals(f):
-    return struct.unpack('>fff', f.read(12))
-
-def gh2_vertex(f):
-    return struct.unpack('fff', f.read(12))
-
-def gh2_normals(f):
-    return struct.unpack('fff', f.read(12))
-
-def gh2_weights(f):
-    return struct.unpack('ffff', f.read(16))
-
-def gh2_uv(f):
-    return struct.unpack('ff', f.read(8))
-    
-def uv_hfloat(f):
-    return struct.unpack('>ee', f.read(4))
-    
-def l_uv(f):
-    return struct.unpack('ff', f.read(8))
-
-def b_uv(f):
-    return struct.unpack('>ff', f.read(8))
-    
 def l_numstring(f):
     name_len = struct.unpack('I', f.read(4))[0]
     string = f.read(name_len).decode('utf-8')
@@ -83,59 +47,6 @@ def b_numstring(f):
     string = f.read(name_len).decode('utf-8')
     return string
     
-def l_4x3_matrix(f):
-    return struct.unpack('12f', f.read(48))
-    
-def b_4x3_matrix(f):
-    return struct.unpack('>12f', f.read(48))
-    
-def l_weights(f):
-    return struct.unpack('BBBB', f.read(4))
-
-def rb2_weights(f):
-    return struct.unpack('>ffff', f.read(16))
-    
-def tbrb_weights(f):
-    return struct.unpack('>BBBB', f.read(4))
-        
-def l_indices(f):
-    return struct.unpack('HHHH', f.read(8))
-        
-def b_indices(f):
-    return struct.unpack('>HHHH', f.read(8))
-    
-def l_face(f):
-    return struct.unpack('HHH', f.read(6))
-    
-def b_face(f):
-    return struct.unpack('>HHH', f.read(6))
-
-def b_quat(f):
-    return struct.unpack('>ffff', f.read(16))
-
-def l_quat(f):
-    return struct.unpack('ffff', f.read(16))
-    
-def b_scale(f):
-    return struct.unpack('>fff', f.read(12))
-
-def b_location(f):
-    return struct.unpack('>fff', f.read(12))
-
-def l_location(f):
-    return struct.unpack('fff', f.read(12))
-    
-def b_scale(f):
-    return struct.unpack('>fff', f.read(12))
-
-def l_scale(f):
-    return struct.unpack('fff', f.read(12))
-
-def pos_sample(f):
-    return struct.unpack('>hhh', f.read(6))
-
-def x360_indices(f):
-    return struct.unpack('>BBBB', f.read(4))
 
 class ImportMilo(Operator, ImportHelper):
     """This appears in the tooltip of the operator and in the generated docs"""
