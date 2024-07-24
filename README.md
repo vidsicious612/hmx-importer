@@ -12,6 +12,7 @@ For GH1, some characters have a parent mesh which holds the transforms. (Usually
 To fix the other meshes, select the meshes that dont have right transforms, then select the parent mesh and do Ctrl+P, then "Without Inverse".
 
 Games it currently supports:
+
 Amplitude
 
 EyeToy: AntiGrav
