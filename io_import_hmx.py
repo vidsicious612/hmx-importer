@@ -197,7 +197,7 @@ class ImportMilo(Operator, ImportHelper):
                         MatTexFiles.append(file)
                     if "Tex" in directory:
                         if not "TexBlend" in directory:
-                            Tex(context, self, name, file)
+                            Tex(context, basename, self, name, file)
                             MatTexNames.append(name)
                             MatTexFiles.append(file)
                     if ".mesh" in name and "Mesh" in directory:
@@ -225,7 +225,7 @@ class ImportMilo(Operator, ImportHelper):
                         MatTexFiles.append(file)
                     if "Tex" in directory:
                         if not "TexBlend" in directory:
-                            Tex(context, self, name, file)
+                            Tex(context, basename, self, name, file)
                             MatTexNames.append(name)
                             MatTexFiles.append(file)
                     if ".mesh" in name and "Mesh" in directory:
@@ -253,7 +253,7 @@ class ImportMilo(Operator, ImportHelper):
                         MatTexFiles.append(file)
                     if "Tex" in directory:
                         if not "TexBlend" in directory:
-                            Tex(context, self, name, file)
+                            Tex(context, basename, self, name, file)
                             MatTexNames.append(name)
                             MatTexFiles.append(file)
                     if ".mesh" in name and "Mesh" in directory:
@@ -281,7 +281,7 @@ class ImportMilo(Operator, ImportHelper):
                         MatTexFiles.append(file)
                     if "Tex" in directory:
                         if not "TexBlend" in directory:
-                            Tex(context, self, name, file)
+                            Tex(context, basename, self, name, file)
                             MatTexNames.append(name)
                             MatTexFiles.append(file)
                     if ".mesh" in name and "Mesh" in directory:
@@ -292,10 +292,9 @@ class ImportMilo(Operator, ImportHelper):
                         TransAnim(file)
         return {'FINISHED'}                
 
-def Tex(context, self, filename, file):
+def Tex(context, basename, self, filename, file):
     try:
         directory = os.path.dirname(self.filepath)
-        basename = os.path.basename(self.filepath)
         f = io.BytesIO(file)
         # Hacky way to guess endian
         Versions = [5, 7, 8, 10, 11]
@@ -355,32 +354,48 @@ def Tex(context, self, filename, file):
                     Pixel1 = f.read(1)
                     Pixel2 = f.read(1)
                     Pixels.append((Pixel2, Pixel1))
-            file_path = os.path.join(directory, filename[:-4] + ".dds")
+            if basename.endswith('.milo_wii'):
+                file_path = os.path.join(directory, filename[:-4] + ".tpl")
+            else:
+                file_path = os.path.join(directory, filename[:-4] + ".dds")
 
             # Export texture out
-            with open(file_path, 'wb') as output_file:
-                output_file.write(struct.pack('ccc', b'D', b'D', b'S',))
-                output_file.write(b'\x20')
-                output_file.write(struct.pack('I', 124))
-                output_file.write(struct.pack('I', 528391))
-                output_file.write(struct.pack('I', Height))
-                output_file.write(struct.pack('I', Width))
-                output_file.write(struct.pack('III', 0, 0, MipMapCount))
-                for x in range(11):
-                    output_file.write(struct.pack('I', 0))
-                output_file.write(struct.pack('I', 32))
-                output_file.write(struct.pack('I', 4))
-                output_file.write(EncodeOut)
-                output_file.write(struct.pack('IIIII', 0, 0, 0, 0, 0))
-                output_file.write(struct.pack('I', 4096))
-                output_file.write(struct.pack('IIII', 0, 0, 0, 0))
-                if not basename.endswith('.milo_xbox'):            
+            if basename.endswith('.milo_wii'):
+                with open(file_path, 'wb') as output_file:
+                    output_file.write(b'\x00\x20\xAF\x30')
+                    output_file.write(struct.pack('>IIII', 1, 12, 20, 0))
+                    output_file.write(struct.pack('>HH', Height, Width))
+                    output_file.write(struct.pack('>II', 14, 64))
+                    output_file.write(struct.pack('>IIII', 0, 0, 1, 1))
+                    output_file.write(struct.pack('>f', 0))
+                    output_file.write(struct.pack('>BBBB', 0, 0, 0, 0))
+                    for x in range(2):
+                        output_file.write(struct.pack('>I', 0))
                     output_file.write(Bitmap)
-                else:
-                    for Pixel in Pixels:
-                        byte1, byte2 = Pixel
-                        output_file.write(byte1)
-                        output_file.write(byte2)
+            else:
+                with open(file_path, 'wb') as output_file:
+                    output_file.write(struct.pack('ccc', b'D', b'D', b'S',))
+                    output_file.write(b'\x20')
+                    output_file.write(struct.pack('I', 124))
+                    output_file.write(struct.pack('I', 528391))
+                    output_file.write(struct.pack('I', Height))
+                    output_file.write(struct.pack('I', Width))
+                    output_file.write(struct.pack('III', 0, 0, MipMapCount))
+                    for x in range(11):
+                        output_file.write(struct.pack('I', 0))
+                    output_file.write(struct.pack('I', 32))
+                    output_file.write(struct.pack('I', 4))
+                    output_file.write(EncodeOut)
+                    output_file.write(struct.pack('IIIII', 0, 0, 0, 0, 0))
+                    output_file.write(struct.pack('I', 4096))
+                    output_file.write(struct.pack('IIII', 0, 0, 0, 0))
+                    if not basename.endswith('.milo_xbox'):            
+                        output_file.write(Bitmap)
+                    else:
+                        for Pixel in Pixels:
+                            byte1, byte2 = Pixel
+                            output_file.write(byte1)
+                            output_file.write(byte2)
             
             print("Exported texture:", file_path)
         if context.scene.games == 'OPTION_A':
@@ -430,32 +445,45 @@ def Tex(context, self, filename, file):
                     Pixel1 = f.read(1)
                     Pixel2 = f.read(1)
                     Pixels.append((Pixel2, Pixel1))
-            file_path = os.path.join(directory, filename[:-4] + ".dds")
+            if basename.endswith('.milo_wii'):
+                file_path = os.path.join(directory, filename[:-4] + ".tpl")
+            else:
+                file_path = os.path.join(directory, filename[:-4] + ".dds")
 
             # Export texture out
-            with open(file_path, 'wb') as output_file:
-                output_file.write(struct.pack('ccc', b'D', b'D', b'S',))
-                output_file.write(b'\x20')
-                output_file.write(struct.pack('I', 124))
-                output_file.write(struct.pack('I', 528391))
-                output_file.write(struct.pack('I', Height))
-                output_file.write(struct.pack('I', Width))
-                output_file.write(struct.pack('III', 0, 0, MipMapCount))
-                for x in range(11):
-                    output_file.write(struct.pack('I', 0))
-                output_file.write(struct.pack('I', 32))
-                output_file.write(struct.pack('I', 4))
-                output_file.write(EncodeOut)
-                output_file.write(struct.pack('IIIII', 0, 0, 0, 0, 0))
-                output_file.write(struct.pack('I', 4096))
-                output_file.write(struct.pack('IIII', 0, 0, 0, 0))
-                if not basename.endswith('.milo_xbox'):            
+            if basename.endswith('.milo_wii'):
+                with open(file_path, 'wb') as output_file:
+                    output_file.write(b'\x00\x20\xAF\x30')
+                    output_file.write(struct.pack('>IIIIII', 1, 12, 20, 0, Height, Width))
+                    output_file.write(struct.pack('>II', 14, 64))
+                    output_file.write(struct.pack('>IIII', 0, 0, 1, 1))
+                    output_file.write(struct.pack('>f', 0))
+                    output_file.write(struct.pack('>BBBB', 0, 0, 0, 0))
                     output_file.write(Bitmap)
-                else:
-                    for Pixel in Pixels:
-                        byte1, byte2 = Pixel
-                        output_file.write(byte1)
-                        output_file.write(byte2)
+            else:
+                with open(file_path, 'wb') as output_file:
+                    output_file.write(struct.pack('ccc', b'D', b'D', b'S',))
+                    output_file.write(b'\x20')
+                    output_file.write(struct.pack('I', 124))
+                    output_file.write(struct.pack('I', 528391))
+                    output_file.write(struct.pack('I', Height))
+                    output_file.write(struct.pack('I', Width))
+                    output_file.write(struct.pack('III', 0, 0, MipMapCount))
+                    for x in range(11):
+                        output_file.write(struct.pack('I', 0))
+                    output_file.write(struct.pack('I', 32))
+                    output_file.write(struct.pack('I', 4))
+                    output_file.write(EncodeOut)
+                    output_file.write(struct.pack('IIIII', 0, 0, 0, 0, 0))
+                    output_file.write(struct.pack('I', 4096))
+                    output_file.write(struct.pack('IIII', 0, 0, 0, 0))
+                    if not basename.endswith('.milo_xbox'):            
+                        output_file.write(Bitmap)
+                    else:
+                        for Pixel in Pixels:
+                            byte1, byte2 = Pixel
+                            output_file.write(byte1)
+                            output_file.write(byte2)
             
             print("Exported texture:", file_path)
         elif context.scene.games == 'OPTION_B':
@@ -505,32 +533,45 @@ def Tex(context, self, filename, file):
                     Pixel1 = f.read(1)
                     Pixel2 = f.read(1)
                     Pixels.append((Pixel2, Pixel1))
-            file_path = os.path.join(directory, filename[:-4] + ".dds")
+            if basename.endswith('.milo_wii'):
+                file_path = os.path.join(directory, filename[:-4] + ".tpl")
+            else:
+                file_path = os.path.join(directory, filename[:-4] + ".dds")
 
             # Export texture out
-            with open(file_path, 'wb') as output_file:
-                output_file.write(struct.pack('ccc', b'D', b'D', b'S',))
-                output_file.write(b'\x20')
-                output_file.write(struct.pack('I', 124))
-                output_file.write(struct.pack('I', 528391))
-                output_file.write(struct.pack('I', Height))
-                output_file.write(struct.pack('I', Width))
-                output_file.write(struct.pack('III', 0, 0, MipMapCount))
-                for x in range(11):
-                    output_file.write(struct.pack('I', 0))
-                output_file.write(struct.pack('I', 32))
-                output_file.write(struct.pack('I', 4))
-                output_file.write(EncodeOut)
-                output_file.write(struct.pack('IIIII', 0, 0, 0, 0, 0))
-                output_file.write(struct.pack('I', 4096))
-                output_file.write(struct.pack('IIII', 0, 0, 0, 0))
-                if not basename.endswith('.milo_xbox'):            
+            if basename.endswith('.milo_wii'):
+                with open(file_path, 'wb') as output_file:
+                    output_file.write(b'\x00\x20\xAF\x30')
+                    output_file.write(struct.pack('>IIIIII', 1, 12, 20, 0, Height, Width))
+                    output_file.write(struct.pack('>II', 14, 64))
+                    output_file.write(struct.pack('>IIII', 0, 0, 1, 1))
+                    output_file.write(struct.pack('>f', 0))
+                    output_file.write(struct.pack('>BBBB', 0, 0, 0, 0))
                     output_file.write(Bitmap)
-                else:
-                    for Pixel in Pixels:
-                        byte1, byte2 = Pixel
-                        output_file.write(byte1)
-                        output_file.write(byte2)
+            else:
+                with open(file_path, 'wb') as output_file:
+                    output_file.write(struct.pack('ccc', b'D', b'D', b'S',))
+                    output_file.write(b'\x20')
+                    output_file.write(struct.pack('I', 124))
+                    output_file.write(struct.pack('I', 528391))
+                    output_file.write(struct.pack('I', Height))
+                    output_file.write(struct.pack('I', Width))
+                    output_file.write(struct.pack('III', 0, 0, MipMapCount))
+                    for x in range(11):
+                        output_file.write(struct.pack('I', 0))
+                    output_file.write(struct.pack('I', 32))
+                    output_file.write(struct.pack('I', 4))
+                    output_file.write(EncodeOut)
+                    output_file.write(struct.pack('IIIII', 0, 0, 0, 0, 0))
+                    output_file.write(struct.pack('I', 4096))
+                    output_file.write(struct.pack('IIII', 0, 0, 0, 0))
+                    if not basename.endswith('.milo_xbox'):            
+                        output_file.write(Bitmap)
+                    else:
+                        for Pixel in Pixels:
+                            byte1, byte2 = Pixel
+                            output_file.write(byte1)
+                            output_file.write(byte2)
             
             print("Exported texture:", file_path)            
         elif context.scene.games == 'OPTION_C':
@@ -580,32 +621,45 @@ def Tex(context, self, filename, file):
                     Pixel1 = f.read(1)
                     Pixel2 = f.read(1)
                     Pixels.append((Pixel2, Pixel1))
-            file_path = os.path.join(directory, filename[:-4] + ".dds")
+            if basename.endswith('.milo_wii'):
+                file_path = os.path.join(directory, filename[:-4] + ".tpl")
+            else:
+                file_path = os.path.join(directory, filename[:-4] + ".dds")
 
             # Export texture out
-            with open(file_path, 'wb') as output_file:
-                output_file.write(struct.pack('ccc', b'D', b'D', b'S',))
-                output_file.write(b'\x20')
-                output_file.write(struct.pack('I', 124))
-                output_file.write(struct.pack('I', 528391))
-                output_file.write(struct.pack('I', Height))
-                output_file.write(struct.pack('I', Width))
-                output_file.write(struct.pack('III', 0, 0, MipMapCount))
-                for x in range(11):
-                    output_file.write(struct.pack('I', 0))
-                output_file.write(struct.pack('I', 32))
-                output_file.write(struct.pack('I', 4))
-                output_file.write(EncodeOut)
-                output_file.write(struct.pack('IIIII', 0, 0, 0, 0, 0))
-                output_file.write(struct.pack('I', 4096))
-                output_file.write(struct.pack('IIII', 0, 0, 0, 0))
-                if not basename.endswith('.milo_xbox'):            
+            if basename.endswith('.milo_wii'):
+                with open(file_path, 'wb') as output_file:
+                    output_file.write(b'\x00\x20\xAF\x30')
+                    output_file.write(struct.pack('>IIIIII', 1, 12, 20, 0, Height, Width))
+                    output_file.write(struct.pack('>II', 14, 64))
+                    output_file.write(struct.pack('>IIII', 0, 0, 1, 1))
+                    output_file.write(struct.pack('>f', 0))
+                    output_file.write(struct.pack('>BBBB', 0, 0, 0, 0))
                     output_file.write(Bitmap)
-                else:
-                    for Pixel in Pixels:
-                        byte1, byte2 = Pixel
-                        output_file.write(byte1)
-                        output_file.write(byte2)
+            else:
+                with open(file_path, 'wb') as output_file:
+                    output_file.write(struct.pack('ccc', b'D', b'D', b'S',))
+                    output_file.write(b'\x20')
+                    output_file.write(struct.pack('I', 124))
+                    output_file.write(struct.pack('I', 528391))
+                    output_file.write(struct.pack('I', Height))
+                    output_file.write(struct.pack('I', Width))
+                    output_file.write(struct.pack('III', 0, 0, MipMapCount))
+                    for x in range(11):
+                        output_file.write(struct.pack('I', 0))
+                    output_file.write(struct.pack('I', 32))
+                    output_file.write(struct.pack('I', 4))
+                    output_file.write(EncodeOut)
+                    output_file.write(struct.pack('IIIII', 0, 0, 0, 0, 0))
+                    output_file.write(struct.pack('I', 4096))
+                    output_file.write(struct.pack('IIII', 0, 0, 0, 0))
+                    if not basename.endswith('.milo_xbox'):            
+                        output_file.write(Bitmap)
+                    else:
+                        for Pixel in Pixels:
+                            byte1, byte2 = Pixel
+                            output_file.write(byte1)
+                            output_file.write(byte2)
             
             print("Exported texture:", file_path)
         f.close()
