@@ -41,4 +41,8 @@ Also, feel free to submit a issue if one occurs. I'll do my best to fix it.
 
 Weights for TBRB/GDRB only work for Wii version.
 
+To make sure the mesh doesn't get distorted when an armature modifier is applied, select the skeleton and go into Pose Mode, and apply the pose as the rest pose.
+
+Then try it again.
+
 And if there's any game/platform you want me to add support for, do let me know.
