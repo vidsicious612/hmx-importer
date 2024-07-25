@@ -277,10 +277,10 @@ class ImportMilo(Operator, ImportHelper):
                 files = rest_file.split(b'\xAD\xDE\xAD\xDE')
                 for file in files:
                     header = file[:4]
-                    if header == b'\x00\x00\x00\x26':
-                        DC3Mesh(self, file)
-                    elif header == b'\x00\x00\x00\x0B':
+                    if header == b'\x00\x00\x00\x0B':
                         DC3Tex(self, file)
+                    elif header == b'\x00\x00\x00\x26':
+                        DC3Mesh(self, file)
         return {'FINISHED'}                
 
 def Tex(context, basename, self, filename, file):
@@ -1607,6 +1607,66 @@ def Mesh(self, filename, file, basename, MatTexNames, MatTexFiles):
                             b = b_float(f)
                             a = b_float(f)
                             mat.diffuse_color = (r, g, b, a)                            
+def DC3Tex(self, file):
+    try:
+        directory = os.path.dirname(self.filepath)
+        f = io.BytesIO(file)
+        f.seek(17)
+        Width = b_int(f)
+        Height = b_int(f)
+        f.seek(4, 1)
+        TexName = b_numstring(f)
+        TexName = TexName.strip('../')
+        TexName = TexName.replace('/', '_')
+        f.seek(16, 1)
+        Encoding = b_int(f)
+        MipMapCount = struct.unpack('>B', f.read(1))
+        MipMapCount = int.from_bytes(MipMapCount, byteorder='little')
+        EncodeOut = b''
+        if Encoding == 8:
+            EncodeOut = b'\x44\x58\x54\x31'
+        elif Encoding == 24:
+            EncodeOut = b'\x44\x58\x54\x35'
+        elif Encoding == 32:
+            EncodeOut = b'\x41\x54\x49\x32'
+        f.seek(21, 1)
+        BitmapOffset = f.tell()
+        Bitmap = f.read()
+        f.seek(BitmapOffset)
+        Pixels = []
+        for x in range(len(Bitmap)):
+            Pixel1 = f.read(1)
+            Pixel2 = f.read(1)
+            Pixels.append((Pixel2, Pixel1))
+        file_path = os.path.join(directory, TexName[:-4] + ".dds")
+        with open(file_path, 'wb') as output_file:
+            output_file.write(struct.pack('ccc', b'D', b'D', b'S',))
+            output_file.write(b'\x20')
+            output_file.write(struct.pack('I', 124))
+            output_file.write(struct.pack('I', 528391))
+            output_file.write(struct.pack('I', Height))
+            output_file.write(struct.pack('I', Width))
+            output_file.write(struct.pack('III', 0, 0, MipMapCount))
+            for x in range(11):
+                output_file.write(struct.pack('I', 0))
+            output_file.write(struct.pack('I', 32))
+            output_file.write(struct.pack('I', 4))
+            output_file.write(EncodeOut)
+            output_file.write(struct.pack('IIIII', 0, 0, 0, 0, 0))
+            output_file.write(struct.pack('I', 4096))
+            output_file.write(struct.pack('IIII', 0, 0, 0, 0))
+            for Pixel in Pixels:
+                byte1, byte2 = Pixel
+                output_file.write(byte1)
+                output_file.write(byte2)
+            
+        print("Exported texture:", file_path)
+
+        f.close()
+        del f
+    except Exception as e:
+        print(e)
+        
 def DC3Mesh(self, file):
     f = io.BytesIO(file)
     f.seek(21)
@@ -1620,7 +1680,7 @@ def DC3Mesh(self, file):
     MatName = b_numstring(f)
     MeshName = b_numstring(f)
     if self.low_lod_setting:
-        if "lod" in MeshName:
+        if "lod" in MeshName or "wrinkle" in MeshName:
             return
     if self.shadow_setting:
         if "shadow" in MeshName:
@@ -1682,66 +1742,7 @@ def DC3Mesh(self, file):
                 obj.data.materials[0] = mat
             else:
                 obj.data.materials.append(mat)
-
-def DC3Tex(self, file):
-    try:
-        directory = os.path.dirname(self.filepath)
-        f = io.BytesIO(file)
-        f.seek(17)
-        Width = b_int(f)
-        Height = b_int(f)
-        f.seek(4, 1)
-        TexName = b_numstring(f)
-        TexName = TexName.strip('../')
-        TexName = TexName.replace('/', '_')
-        f.seek(16, 1)
-        Encoding = b_int(f)
-        MipMapCount = struct.unpack('>B', f.read(1))
-        MipMapCount = int.from_bytes(MipMapCount, byteorder='little')
-        EncodeOut = b''
-        if Encoding == 8:
-            EncodeOut = b'\x44\x58\x54\x31'
-        elif Encoding == 24:
-            EncodeOut = b'\x44\x58\x54\x35'
-        elif Encoding == 32:
-            EncodeOut = b'\x41\x54\x49\x32'
-        f.seek(21, 1)
-        BitmapOffset = f.tell()
-        Bitmap = f.read()
-        f.seek(BitmapOffset)
-        Pixels = []
-        for x in range(len(Bitmap)):
-            Pixel1 = f.read(1)
-            Pixel2 = f.read(1)
-            Pixels.append((Pixel2, Pixel1))
-        file_path = os.path.join(directory, TexName[:-4] + ".dds")
-        with open(file_path, 'wb') as output_file:
-            output_file.write(struct.pack('ccc', b'D', b'D', b'S',))
-            output_file.write(b'\x20')
-            output_file.write(struct.pack('I', 124))
-            output_file.write(struct.pack('I', 528391))
-            output_file.write(struct.pack('I', Height))
-            output_file.write(struct.pack('I', Width))
-            output_file.write(struct.pack('III', 0, 0, MipMapCount))
-            for x in range(11):
-                output_file.write(struct.pack('I', 0))
-            output_file.write(struct.pack('I', 32))
-            output_file.write(struct.pack('I', 4))
-            output_file.write(EncodeOut)
-            output_file.write(struct.pack('IIIII', 0, 0, 0, 0, 0))
-            output_file.write(struct.pack('I', 4096))
-            output_file.write(struct.pack('IIII', 0, 0, 0, 0))
-            for Pixel in Pixels:
-                byte1, byte2 = Pixel
-                output_file.write(byte1)
-                output_file.write(byte2)
-            
-        print("Exported texture:", file_path)
-
-        f.close()
-        del f
-    except Exception as e:
-        print(e)
+        
         
 def Trans(basename, filename, file):        
     f = io.BytesIO(file)
