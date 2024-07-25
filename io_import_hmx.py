@@ -273,6 +273,32 @@ class ImportMilo(Operator, ImportHelper):
                 for x in range(EntryCount):
                     dirs.append(b_numstring(f))
                     filenames.append(b_numstring(f))
+                f.seek(16, 1)
+                Type = b_numstring(f)
+                f.seek(8, 1)
+                ViewportCount = b_int(f)
+                for x in range(ViewportCount):
+                    f.read(48)
+                f.seek(9, 1)
+                SubdirCount = b_int(f)
+                for x in range(SubdirCount):
+                    Subdir = b_numstring(f)
+                f.seek(1, 1)
+                InlineSubdirCount = b_int(f)
+                for x in range(InlineSubdirCount):
+                    InlineSubdir = b_numstring(f)
+                f.seek(16, 1)
+                DirType2 = b_numstring(f)
+                DirName2 = b_numstring(f)
+                f.seek(9, 1)
+                EntryCount = b_int(f)
+                BoneNames = []
+                BoneFiles = []
+                for x in range(EntryCount):
+                    DirType3 = b_numstring(f)
+                    DirName3 = b_numstring(f)
+                    if DirType3 == "Trans":
+                        BoneNames.append(DirName3)
                 rest_file = f.read()
                 files = rest_file.split(b'\xAD\xDE\xAD\xDE')
                 for file in files:
@@ -281,6 +307,9 @@ class ImportMilo(Operator, ImportHelper):
                         DC3Tex(self, file)
                     elif header == b'\x00\x00\x00\x26':
                         DC3Mesh(self, file)
+                    elif header == b'\x00\x00\x00\x09':
+                        BoneFiles.append(file)
+                        DC3Trans(self, file, BoneNames, BoneFiles)
         return {'FINISHED'}                
 
 def Tex(context, basename, self, filename, file):
@@ -1680,7 +1709,7 @@ def DC3Mesh(self, file):
     MatName = b_numstring(f)
     MeshName = b_numstring(f)
     if self.low_lod_setting:
-        if "lod" in MeshName or "wrinkle" in MeshName:
+        if "lod" in MeshName:
             return
     if self.shadow_setting:
         if "shadow" in MeshName:
@@ -1743,7 +1772,58 @@ def DC3Mesh(self, file):
             else:
                 obj.data.materials.append(mat)
         
-        
+
+def DC3Trans(self, file, BoneNames, BoneFiles):
+    for file, name in zip(BoneFiles, BoneNames):        
+        f = io.BytesIO(file)
+        f.seek(17)
+        LocalUpper = struct.unpack('>9f', f.read(36))
+        LocalPos = struct.unpack('>3f', f.read(12))
+        WorldUpper = struct.unpack('>9f', f.read(36))
+        WorldPos = struct.unpack('>3f', f.read(12))
+        f.seek(4, 1)
+        Target = b_numstring(f)
+        f.seek(1, 1)
+        Parent = b_numstring(f)
+        if "Armature" in bpy.data.armatures:
+            armature_data = bpy.data.armatures["Armature"]
+        else:
+            armature_data = bpy.data.armatures.new("Armature")
+        if "Armature" in bpy.data.objects:
+            armature_obj = bpy.data.objects["Armature"]
+        else:
+            armature_obj = bpy.data.objects.new("Armature", armature_data)
+        if not armature_obj.name in bpy.context.scene.collection.objects:
+            bpy.context.scene.collection.objects.link(armature_obj)
+        bpy.context.view_layer.objects.active = armature_obj
+        bpy.ops.object.mode_set(mode='EDIT')
+        edit_bone = armature_obj.data.edit_bones.get(name)
+        if edit_bone is None:
+            edit_bone = armature_obj.data.edit_bones.new(name)
+            edit_bone.head = (0, 0, 0)
+            edit_bone.tail = (0, 1, 0)
+            edit_bone.use_deform = True
+        parent_bone = armature_obj.data.edit_bones.get(Parent)
+        if parent_bone is None:
+            parent_bone = armature_obj.data.edit_bones.new(Parent)
+            parent_bone.head = (0, 0, 0)
+            parent_bone.tail = (0, 1, 0)
+            parent_bone.use_deform = True
+        if parent_bone:
+            edit_bone.parent = parent_bone
+        bpy.ops.object.mode_set(mode='POSE')
+        pose_bone = armature_obj.pose.bones.get(name)
+        if pose_bone:
+            pose_bone.matrix_basis = mathutils.Matrix((
+                (LocalUpper[0], LocalUpper[3], LocalUpper[6], 0.0),
+                (LocalUpper[1], LocalUpper[4], LocalUpper[7], 0.0),
+                (LocalUpper[2], LocalUpper[5], LocalUpper[8], 0.0),
+                (0.0, 0.0, 0.0, 1.0),
+            ))
+            pose_bone.location = LocalPos  
+        bpy.ops.object.mode_set(mode='OBJECT')
+        armature_obj.rotation_euler = (0, 0, math.radians(-180))
+    
 def Trans(basename, filename, file):        
     f = io.BytesIO(file)
     # Hacky way to guess endian
