@@ -1620,7 +1620,7 @@ def DC3Mesh(self, file):
     MatName = b_numstring(f)
     MeshName = b_numstring(f)
     if self.low_lod_setting:
-        if "lod" in MeshName
+        if "lod" in MeshName:
             return
     if self.shadow_setting:
         if "shadow" in MeshName:
