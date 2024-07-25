@@ -73,6 +73,12 @@ class ImportMilo(Operator, ImportHelper):
         description="Skip shadow mesh from characters",
         default=True,
     )       
+
+    venue_setting: BoolProperty(
+        name="Venue (TBRB)",
+        description="Import TBRB venue",
+        default=False,
+    ) 
     
     GameItems = [
         ('OPTION_A', 'LRB', ''),
@@ -93,8 +99,6 @@ class ImportMilo(Operator, ImportHelper):
         layout.prop(context.scene, "games", text="")
         layout.prop(self, "low_lod_setting")
         layout.prop(self, "shadow_setting")
-        layout.prop(self, "trans_anim_setting")
-        layout.prop(self, "prop_anim_setting")
         layout.prop(self, "venue_setting")
 
     def execute(self, context):
@@ -217,6 +221,17 @@ class ImportMilo(Operator, ImportHelper):
                 for x in range(EntryCount):
                     dirs.append(b_numstring(f))
                     filenames.append(b_numstring(f))
+                if self.venue_setting:
+                    rest_file = f.read()
+                    files = rest_file.split(b'\xAD\xDE\xAD\xDE')
+                    for file in files:
+                        header = file[:4]
+                        if header == b'\x00\x00\x00\x0A':
+                            VenueTex(basename, self, file)
+                        elif header == b'\x00\x00\x00\x24':
+                            VenueMesh(self, file)
+                        elif header == b'\x00\x00\x00\x07':
+                            TransAnim(file)
                 rest_file = f.read()
                 files = rest_file.split(b'\xAD\xDE\xAD\xDE')
                 for directory, name, file in zip(dirs, filenames, files):
@@ -1695,7 +1710,220 @@ def DC3Tex(self, file):
         del f
     except Exception as e:
         print(e)
-        
+
+def VenueTex(basename, self, file):
+    try:
+        directory = os.path.dirname(self.filepath)
+        f = io.BytesIO(file)
+        f.seek(17)
+        Width = b_int(f)
+        Height = b_int(f)
+        f.seek(4, 1)
+        TexName = b_numstring(f)
+        TexName = TexName.strip('../')
+        TexName = TexName.replace('/', '_')
+        f.seek(11, 1)
+        Encoding = b_int(f)
+        MipMapCount = struct.unpack('>B', f.read(1))
+        MipMapCount = int.from_bytes(MipMapCount, byteorder='little')
+        EncodeOut = b''
+        if Encoding == 8:
+            EncodeOut = b'\x44\x58\x54\x31'
+        elif Encoding == 24:
+            EncodeOut = b'\x44\x58\x54\x35'
+        elif Encoding == 32:
+            EncodeOut = b'\x41\x54\x49\x32'
+        f.seek(25, 1)
+        if not basename.endswith('.milo_xbox'):
+            Bitmap = f.read()
+        else:
+            BitmapOffset = f.tell()
+            Bitmap = f.read()
+            f.seek(BitmapOffset)
+            Pixels = []
+            for x in range(len(Bitmap)):
+                Pixel1 = f.read(1)
+                Pixel2 = f.read(1)
+                Pixels.append((Pixel2, Pixel1))            
+        if basename.endswith('.milo_wii'):
+            file_path = os.path.join(directory, TexName[:-4] + ".tpl")
+        else:
+            file_path = os.path.join(directory, TexName[:-4] + ".dds")
+        if not basename.endswith('.milo_wii'):
+            with open(file_path, 'wb') as output_file:
+                output_file.write(struct.pack('ccc', b'D', b'D', b'S',))
+                output_file.write(b'\x20')
+                output_file.write(struct.pack('I', 124))
+                output_file.write(struct.pack('I', 528391))
+                output_file.write(struct.pack('I', Height))
+                output_file.write(struct.pack('I', Width))
+                output_file.write(struct.pack('III', 0, 0, MipMapCount))
+                for x in range(11):
+                    output_file.write(struct.pack('I', 0))
+                output_file.write(struct.pack('I', 32))
+                output_file.write(struct.pack('I', 4))
+                output_file.write(EncodeOut)
+                output_file.write(struct.pack('IIIII', 0, 0, 0, 0, 0))
+                output_file.write(struct.pack('I', 4096))
+                output_file.write(struct.pack('IIII', 0, 0, 0, 0))
+                if basename.endswith('.milo_xbox'):
+                    for Pixel in Pixels:
+                        byte1, byte2 = Pixel
+                        output_file.write(byte1)
+                        output_file.write(byte2)
+                else:
+                    output_file.write(Bitmap)
+        else:
+            with open(file_path, 'wb') as output_file:
+                output_file.write(b'\x00\x20\xAF\x30')
+                output_file.write(struct.pack('>IIII', 1, 12, 20, 0))
+                output_file.write(struct.pack('>HH', Height, Width))
+                output_file.write(struct.pack('>II', 14, 64))
+                output_file.write(struct.pack('>IIII', 0, 0, 1, 1))
+                output_file.write(struct.pack('>f', 0))
+                output_file.write(struct.pack('>BBBB', 0, 0, 0, 0))
+                for x in range(2):
+                    output_file.write(struct.pack('>I', 0))
+                output_file.write(Bitmap)        
+
+        print("Exported texture:", file_path)
+
+        f.close()
+        del f
+    except Exception as e:
+        print(e)
+
+def VenueMesh(self, file):
+    basename = os.path.basename(self.filepath)
+    f = io.BytesIO(file)
+    f.seek(21)
+    LocalTFM = struct.unpack('>12f', f.read(48))
+    WorldTFM = struct.unpack('>12f', f.read(48))
+    f.seek(4, 1)
+    Target = b_numstring(f)
+    f.seek(1, 1)
+    Parent = b_numstring(f)
+    f.seek(25, 1)
+    MatName = b_numstring(f)
+    MeshName = b_numstring(f)
+    if self.low_lod_setting:
+        if "lod01" in MeshName or "lod02" in MeshName:
+            return
+    if self.shadow_setting:
+        if "shadow" in MeshName:
+            return
+    f.seek(9, 1)
+    VertCount = b_int(f)
+    if basename.endswith('.milo_wii'):
+        f.seek(1, 1)
+    else:
+        f.seek(1, 1)
+        VertSize = f.read(4)
+        f.seek(4, 1)
+    Verts = []
+    Normals = []
+    Weights = []
+    UVs = []
+    Indices = []
+    if basename.endswith('.milo_ps3'):
+        if VertSize != b'\x00\x00\x00\x24':
+            f.seek(-8, 1)
+    for i in range(VertCount):
+        if not basename.endswith('.milo_wii'):
+            if VertSize != b'\x00\x00\x00\x24':
+                x, y, z, w = struct.unpack('>ffff', f.read(16))
+                nx, ny, nz, nw = struct.unpack('>ffff', f.read(16))
+                w1, w2, w3, w4 = struct.unpack('>ffff', f.read(16))
+                u, v = struct.unpack('>ff', f.read(8))
+                b1, b2, b3, b4 = struct.unpack('>HHHH', f.read(8))
+                f.seek(16, 1)
+        else:
+            x, y, z = struct.unpack('>fff', f.read(12))
+        if basename.endswith('.milo_wii'):
+            nx, ny, nz = struct.unpack('>fff', f.read(12))
+            w1, w2, w3, w4 = struct.unpack('>ffff', f.read(16))
+            u, v = struct.unpack('>ff', f.read(8))
+            b1, b2, b3, b4 = struct.unpack('>HHHH', f.read(8))
+            f.seek(16, 1)
+        elif basename.endswith('.milo_xbox'):
+            u, v = struct.unpack('>ee', f.read(4))
+            f.seek(16, 1)
+        elif basename.endswith('.milo_ps3'):
+            if VertSize == b'\x00\x00\x00\x24':
+                u, v = struct.unpack('>ee', f.read(4))
+                f.seek(20, 1)
+        Verts.append((x, y, z))
+        if basename.endswith('.milo_wii') or VertSize != b'\x00\x00\x00\x24':
+            Normals.append((nx, ny, nz))
+            Weights.append((w1, w2, w3, w4))
+            Indices.append((b1, b2, b3, b4))
+        UVs.append((u, v))
+    FaceCount = b_int(f)
+    Faces = []
+    for x in range(FaceCount):
+        Face = struct.unpack('>HHH', f.read(6))
+        Faces.append(Face)
+    GroupSizesCount = b_int(f)
+    for x in range(GroupSizesCount):
+        f.read(1)
+    BoneNames = []
+    BoneCount = b_int(f)
+    for x in range(BoneCount):
+        BoneName = b_numstring(f)
+        TFM = struct.unpack('>12f', f.read(48))
+        BoneNames.append(BoneName)
+    mesh = bpy.data.meshes.new(name=MeshName)
+    obj = bpy.data.objects.new(MeshName, mesh)
+    bpy.context.scene.collection.objects.link(obj)
+    obj.matrix_world = mathutils.Matrix((
+        (WorldTFM[0], WorldTFM[3], WorldTFM[6], WorldTFM[9],),
+        (WorldTFM[1], WorldTFM[4], WorldTFM[7], WorldTFM[10],),
+        (WorldTFM[2], WorldTFM[5], WorldTFM[8], WorldTFM[11],),
+        (0.0, 0.0, 0.0, 1.0),
+    ))
+    mesh.from_pydata(Verts, [], Faces)
+    mesh.use_auto_smooth = True
+    uv_layer = mesh.uv_layers.new(name="UVMap")
+    for face in mesh.polygons:
+        face.use_smooth = True
+        for loop_index in face.loop_indices:
+            vertex_index = mesh.loops[loop_index].vertex_index
+            uv = UVs[vertex_index]
+            flip = (uv[0], 1 - uv[1])
+            uv_layer.data[loop_index].uv = flip
+    mesh.update()
+    if basename.endswith('.milo_wii') or basename.endswith('.milo_ps3') and len(Weights) != 0:
+        bpy.ops.object.select_all(action='DESELECT')
+        obj.select_set(True)
+        bpy.context.view_layer.objects.active = obj
+        try:
+            for i, vertex in enumerate(mesh.vertices):
+                if i < len(Indices):
+                    group_names = [BoneNames[idx] for idx in Indices[i]]
+                    group_weights = Weights[i]
+                                
+                    for group_name, weight in zip(group_names, group_weights):
+                        if group_name not in obj.vertex_groups:
+                            obj.vertex_groups.new(name=group_name)
+                        group_index = obj.vertex_groups[group_name].index
+                        obj.vertex_groups[group_index].add([vertex.index], weight, 'REPLACE')
+            mesh.update()
+            print("Bone weights assigned to:", obj.name)                
+        except IndexError:
+            print("Invalid weights")
+        obj.select_set(False)
+    bpy.context.view_layer.objects.active = obj
+    if len(MatName) != 0:
+        mat = bpy.data.materials.get(MatName)
+        if mat is None:
+            mat = bpy.data.materials.new(name=MatName)
+        obj = bpy.context.active_object
+        if obj:
+            if obj.data.materials:
+                obj.data.materials[0] = mat
+            else:
+                obj.data.materials.append(mat)
+                    
 def DC3Mesh(self, file):
     f = io.BytesIO(file)
     f.seek(21)
