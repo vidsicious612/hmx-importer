@@ -58,7 +58,7 @@ class ImportMilo(Operator, ImportHelper):
     filename_ext = ".milo_ps3"
 
     filter_glob: StringProperty(
-        default="*.milo_ps3;*.milo_xbox;*.milo_wii;*.rnd_ps2;*.milo_ps2;*.rnd",
+        default="*.milo_ps3;*.milo_xbox;*.milo_wii;*.rnd_ps2;*.milo_ps2;*.rnd;*.dds",
         options={'HIDDEN'},
     )
 
@@ -103,228 +103,241 @@ class ImportMilo(Operator, ImportHelper):
 
     def execute(self, context):
         with open(self.filepath, 'rb') as f:
-            basename = os.path.basename(self.filepath)
-            # Seek over magic
-            f.seek(4)
-            # Grab zlib start and block count
-            StartOffset = l_int(f)
-            FileCount = l_int(f)
-            f.seek(16)
-            compressed = []
-            file = bytes()
-            for x in range(FileCount):
-                compressed.append(l_int(f))
-            f.seek(StartOffset)
-            # Hacky way to guess endian
-            Versions = [6, 10, 24, 25, 28, 32]
-            LittleEndian = False
-            BigEndian = False
-            Version = struct.unpack('I', f.read(4))[0]
-            if Version not in Versions:
-                BigEndian = True
-                f.seek(-4, 1)
-                Version = struct.unpack('>I', f.read(4))[0]
-            elif Version in Versions:
-                LittleEndian = True
-            dirs = []
-            filenames = []
-            MatTexNames = []
-            MatTexFiles = []
-            # GH1
-            if Version == 10 and LittleEndian == True:
-                EntryCount = l_int(f)
-                for x in range(EntryCount):
-                    dirs.append(l_numstring(f))
-                    filenames.append(l_numstring(f))
-                ExtCount = l_int(f)
-                for x in range(ExtCount):
-                    ExtPath = l_numstring(f)
-                rest_file = f.read()
-                files = rest_file.split(b'\xAD\xDE\xAD\xDE')
-                for directory, name, file in zip(dirs, filenames, files):
-                    if ".mat" in name and "Mat" in directory:
-                        MatTexNames.append(name)
-                        MatTexFiles.append(file)
-                    if "Tex" in directory:
-                        if not "TexBlend" in directory:
+            if self.filepath.endswith('.dds'):
+                obj = bpy.context.active_object
+                mat = obj.data.materials[0]
+                image = bpy.data.images.load(self.filepath)
+                if mat.use_nodes:
+                    nodes = mat.node_tree.nodes
+                    principled_bsdf = nodes.get('Principled BSDF')
+                    tex_image = nodes.new('ShaderNodeTexImage')
+                    tex_image.image = image
+                    links = mat.node_tree.links
+                    links.new(tex_image.outputs[0], principled_bsdf.inputs['Base Color'])
+                obj.data.materials[0] = mat
+            else:
+                basename = os.path.basename(self.filepath)
+                # Seek over magic
+                f.seek(4)
+                # Grab zlib start and block count
+                StartOffset = l_int(f)
+                FileCount = l_int(f)
+                f.seek(16)
+                compressed = []
+                file = bytes()
+                for x in range(FileCount):
+                    compressed.append(l_int(f))
+                f.seek(StartOffset)
+                # Hacky way to guess endian
+                Versions = [6, 10, 24, 25, 28, 32]
+                LittleEndian = False
+                BigEndian = False
+                Version = struct.unpack('I', f.read(4))[0]
+                if Version not in Versions:
+                    BigEndian = True
+                    f.seek(-4, 1)
+                    Version = struct.unpack('>I', f.read(4))[0]
+                elif Version in Versions:
+                    LittleEndian = True
+                dirs = []
+                filenames = []
+                MatTexNames = []
+                MatTexFiles = []
+                # GH1
+                if Version == 10 and LittleEndian == True:
+                    EntryCount = l_int(f)
+                    for x in range(EntryCount):
+                        dirs.append(l_numstring(f))
+                        filenames.append(l_numstring(f))
+                    ExtCount = l_int(f)
+                    for x in range(ExtCount):
+                        ExtPath = l_numstring(f)
+                    rest_file = f.read()
+                    files = rest_file.split(b'\xAD\xDE\xAD\xDE')
+                    for directory, name, file in zip(dirs, filenames, files):
+                        if ".mat" in name and "Mat" in directory:
                             MatTexNames.append(name)
                             MatTexFiles.append(file)
-                    if ".mesh" in name and "Mesh" in directory:
-                        Mesh(self, name, file, basename, MatTexNames, MatTexFiles)
-                    if "bone" in name and "Mesh" in directory:
-                        Trans(basename, name, file)
-                    if "TransAnim" in directory:
-                        TransAnim(file)
-            # GH2 PS2
-            elif Version == 24 and LittleEndian == True:
-                DirType = l_numstring(f)
-                DirName = l_numstring(f)
-                dirs.append(DirType)
-                filenames.append(DirName)
-                f.seek(8, 1)
-                EntryCount = l_int(f)
-                for x in range(EntryCount):
-                    dirs.append(l_numstring(f))
-                    filenames.append(l_numstring(f))
-                rest_file = f.read()
-                files = rest_file.split(b'\xAD\xDE\xAD\xDE')                
-                for directory, name, file in zip(dirs, filenames, files):
-                    if ".mat" in name and "Mat" in directory:
-                        MatTexNames.append(name)
-                        MatTexFiles.append(file)
-                    if "Tex" in directory:
-                        if not "TexBlend" in directory:
+                        if "Tex" in directory:
+                            if not "TexBlend" in directory:
+                                MatTexNames.append(name)
+                                MatTexFiles.append(file)
+                        if ".mesh" in name and "Mesh" in directory:
+                            Mesh(self, name, file, basename, MatTexNames, MatTexFiles)
+                        if "bone" in name and "Mesh" in directory:
+                            Trans(basename, name, file)
+                        if "TransAnim" in directory:
+                            TransAnim(file)
+                # GH2 PS2
+                elif Version == 24 and LittleEndian == True:
+                    DirType = l_numstring(f)
+                    DirName = l_numstring(f)
+                    dirs.append(DirType)
+                    filenames.append(DirName)
+                    f.seek(8, 1)
+                    EntryCount = l_int(f)
+                    for x in range(EntryCount):
+                        dirs.append(l_numstring(f))
+                        filenames.append(l_numstring(f))
+                    rest_file = f.read()
+                    files = rest_file.split(b'\xAD\xDE\xAD\xDE')                
+                    for directory, name, file in zip(dirs, filenames, files):
+                        if ".mat" in name and "Mat" in directory:
                             MatTexNames.append(name)
                             MatTexFiles.append(file)
-                    if ".mesh" in name and "Mesh" in directory:
-                        Mesh(self, name, file, basename, MatTexNames, MatTexFiles)
-                    if ".mesh" in name and "Trans" in directory:
-                        Trans(basename, name, file)            
-                    if "TransAnim" in directory:
-                        TransAnim(file)
-            # GH2 360
-            elif Version == 25 and LittleEndian == True:
-                DirType = l_numstring(f)
-                DirName = l_numstring(f)
-                dirs.append(DirType)
-                filenames.append(DirName)
-                f.seek(8, 1)
-                EntryCount = l_int(f)
-                for x in range(EntryCount):
-                    dirs.append(l_numstring(f))
-                    filenames.append(l_numstring(f))
-                rest_file = f.read()
-                files = rest_file.split(b'\xAD\xDE\xAD\xDE')
-                for directory, name, file in zip(dirs, filenames, files):
-                    if ".mat" in name and "Mat" in directory:
-                        MatTexNames.append(name)
-                        MatTexFiles.append(file)
-                    if "Tex" in directory:
-                        if not "TexBlend" in directory:
-                            Tex(context, basename, self, name, file)
+                        if "Tex" in directory:
+                            if not "TexBlend" in directory:
+                                MatTexNames.append(name)
+                                MatTexFiles.append(file)
+                        if ".mesh" in name and "Mesh" in directory:
+                            Mesh(self, name, file, basename, MatTexNames, MatTexFiles)
+                        if ".mesh" in name and "Trans" in directory:
+                            Trans(basename, name, file)            
+                        if "TransAnim" in directory:
+                            TransAnim(file)
+                # GH2 360
+                elif Version == 25 and LittleEndian == True:
+                    DirType = l_numstring(f)
+                    DirName = l_numstring(f)
+                    dirs.append(DirType)
+                    filenames.append(DirName)
+                    f.seek(8, 1)
+                    EntryCount = l_int(f)
+                    for x in range(EntryCount):
+                        dirs.append(l_numstring(f))
+                        filenames.append(l_numstring(f))
+                    rest_file = f.read()
+                    files = rest_file.split(b'\xAD\xDE\xAD\xDE')
+                    for directory, name, file in zip(dirs, filenames, files):
+                        if ".mat" in name and "Mat" in directory:
                             MatTexNames.append(name)
                             MatTexFiles.append(file)
-                    if ".mesh" in name and "Mesh" in directory:
-                        Mesh(self, name, file, basename, MatTexNames, MatTexFiles)
-                    if ".mesh" in name and "Trans" in directory:
-                        Trans(basename, name, file)
-                    if "TransAnim" in directory:
-                        TransAnim(file)
-            # RB2-GDRB
-            elif Version == 25 and BigEndian == True:
-                DirType = b_numstring(f)
-                DirName = b_numstring(f)
-                dirs.append(DirType)
-                filenames.append(DirName)
-                f.seek(8, 1)
-                EntryCount = b_int(f)
-                for x in range(EntryCount):
-                    dirs.append(b_numstring(f))
-                    filenames.append(b_numstring(f))
-                if self.venue_setting:
+                        if "Tex" in directory:
+                            if not "TexBlend" in directory:
+                                Tex(context, basename, self, name, file)
+                                MatTexNames.append(name)
+                                MatTexFiles.append(file)
+                        if ".mesh" in name and "Mesh" in directory:
+                            Mesh(self, name, file, basename, MatTexNames, MatTexFiles)
+                        if ".mesh" in name and "Trans" in directory:
+                            Trans(basename, name, file)
+                        if "TransAnim" in directory:
+                            TransAnim(file)
+                # RB2-GDRB
+                elif Version == 25 and BigEndian == True:
+                    DirType = b_numstring(f)
+                    DirName = b_numstring(f)
+                    dirs.append(DirType)
+                    filenames.append(DirName)
+                    f.seek(8, 1)
+                    EntryCount = b_int(f)
+                    for x in range(EntryCount):
+                        dirs.append(b_numstring(f))
+                        filenames.append(b_numstring(f))
+                    if self.venue_setting:
+                        rest_file = f.read()
+                        files = rest_file.split(b'\xAD\xDE\xAD\xDE')
+                        for file in files:
+                            header = file[:4]
+                            if header == b'\x00\x00\x00\x0A':
+                                VenueTex(basename, self, file)
+                            elif header == b'\x00\x00\x00\x24':
+                                VenueMesh(self, file)
+                            elif header == b'\x00\x00\x00\x07':
+                                TransAnim(file)
+                    rest_file = f.read()
+                    files = rest_file.split(b'\xAD\xDE\xAD\xDE')
+                    for directory, name, file in zip(dirs, filenames, files):
+                        if ".mat" in name and "Mat" in directory:
+                            MatTexNames.append(name)
+                            MatTexFiles.append(file)
+                        if "Tex" in directory:
+                            if not "TexBlend" in directory:
+                                Tex(context, basename, self, name, file)
+                                MatTexNames.append(name)
+                                MatTexFiles.append(file)
+                        if ".mesh" in name and "Mesh" in directory:
+                            Mesh(self, name, file, basename, MatTexNames, MatTexFiles)
+                        if ".mesh" in name and "Trans" in directory:
+                            Trans(basename, name, file)
+                        if "TransAnim" in directory:
+                            TransAnim(file)
+                # RB3-DC2
+                elif Version == 28 and BigEndian == True:
+                    DirType = b_numstring(f)
+                    DirName = b_numstring(f)
+                    dirs.append(DirType)
+                    filenames.append(DirName)
+                    f.seek(8, 1)
+                    EntryCount = b_int(f)
+                    for x in range(EntryCount):
+                        dirs.append(b_numstring(f))
+                        filenames.append(b_numstring(f))
+                    rest_file = f.read()
+                    files = rest_file.split(b'\xAD\xDE\xAD\xDE')
+                    for directory, name, file in zip(dirs, filenames, files):
+                        if ".mat" in name and "Mat" in directory:
+                            MatTexNames.append(name)
+                            MatTexFiles.append(file)
+                        if "Tex" in directory:
+                            if not "TexBlend" in directory:
+                                Tex(context, basename, self, name, file)
+                                MatTexNames.append(name)
+                                MatTexFiles.append(file)
+                        if ".mesh" in name and "Mesh" in directory:
+                            Mesh(self, name, file, basename, MatTexNames, MatTexFiles)
+                        if ".mesh" in name and "Trans" in directory:
+                            Trans(basename, name, file)
+                        if "TransAnim" in directory:
+                            TransAnim(file)
+                # DC3-and on
+                elif Version == 32 and BigEndian == True:
+                    DirType = b_numstring(f)
+                    DirName = b_numstring(f)
+                    dirs.append(DirType)
+                    filenames.append(DirName)
+                    f.seek(9, 1)
+                    EntryCount = b_int(f)
+                    for x in range(EntryCount):
+                        dirs.append(b_numstring(f))
+                        filenames.append(b_numstring(f))
+                    f.seek(16, 1)
+                    Type = b_numstring(f)
+                    f.seek(8, 1)
+                    ViewportCount = b_int(f)
+                    for x in range(ViewportCount):
+                        f.read(48)
+                    f.seek(9, 1)
+                    SubdirCount = b_int(f)
+                    for x in range(SubdirCount):
+                        Subdir = b_numstring(f)
+                    f.seek(1, 1)
+                    InlineSubdirCount = b_int(f)
+                    for x in range(InlineSubdirCount):
+                        InlineSubdir = b_numstring(f)
+                    f.seek(16, 1)
+                    DirType2 = b_numstring(f)
+                    DirName2 = b_numstring(f)
+                    f.seek(9, 1)
+                    EntryCount = b_int(f)
+                    BoneNames = []
+                    BoneFiles = []
+                    for x in range(EntryCount):
+                        DirType3 = b_numstring(f)
+                        DirName3 = b_numstring(f)
+                        if DirType3 == "Trans":
+                            BoneNames.append(DirName3)
                     rest_file = f.read()
                     files = rest_file.split(b'\xAD\xDE\xAD\xDE')
                     for file in files:
                         header = file[:4]
-                        if header == b'\x00\x00\x00\x0A':
-                            VenueTex(basename, self, file)
-                        elif header == b'\x00\x00\x00\x24':
-                            VenueMesh(self, file)
-                        elif header == b'\x00\x00\x00\x07':
-                            TransAnim(file)
-                rest_file = f.read()
-                files = rest_file.split(b'\xAD\xDE\xAD\xDE')
-                for directory, name, file in zip(dirs, filenames, files):
-                    if ".mat" in name and "Mat" in directory:
-                        MatTexNames.append(name)
-                        MatTexFiles.append(file)
-                    if "Tex" in directory:
-                        if not "TexBlend" in directory:
-                            Tex(context, basename, self, name, file)
-                            MatTexNames.append(name)
-                            MatTexFiles.append(file)
-                    if ".mesh" in name and "Mesh" in directory:
-                        Mesh(self, name, file, basename, MatTexNames, MatTexFiles)
-                    if ".mesh" in name and "Trans" in directory:
-                        Trans(basename, name, file)
-                    if "TransAnim" in directory:
-                        TransAnim(file)
-            # RB3-DC2
-            elif Version == 28 and BigEndian == True:
-                DirType = b_numstring(f)
-                DirName = b_numstring(f)
-                dirs.append(DirType)
-                filenames.append(DirName)
-                f.seek(8, 1)
-                EntryCount = b_int(f)
-                for x in range(EntryCount):
-                    dirs.append(b_numstring(f))
-                    filenames.append(b_numstring(f))
-                rest_file = f.read()
-                files = rest_file.split(b'\xAD\xDE\xAD\xDE')
-                for directory, name, file in zip(dirs, filenames, files):
-                    if ".mat" in name and "Mat" in directory:
-                        MatTexNames.append(name)
-                        MatTexFiles.append(file)
-                    if "Tex" in directory:
-                        if not "TexBlend" in directory:
-                            Tex(context, basename, self, name, file)
-                            MatTexNames.append(name)
-                            MatTexFiles.append(file)
-                    if ".mesh" in name and "Mesh" in directory:
-                        Mesh(self, name, file, basename, MatTexNames, MatTexFiles)
-                    if ".mesh" in name and "Trans" in directory:
-                        Trans(basename, name, file)
-                    if "TransAnim" in directory:
-                        TransAnim(file)
-            # DC3-and on
-            elif Version == 32 and BigEndian == True:
-                DirType = b_numstring(f)
-                DirName = b_numstring(f)
-                dirs.append(DirType)
-                filenames.append(DirName)
-                f.seek(9, 1)
-                EntryCount = b_int(f)
-                for x in range(EntryCount):
-                    dirs.append(b_numstring(f))
-                    filenames.append(b_numstring(f))
-                f.seek(16, 1)
-                Type = b_numstring(f)
-                f.seek(8, 1)
-                ViewportCount = b_int(f)
-                for x in range(ViewportCount):
-                    f.read(48)
-                f.seek(9, 1)
-                SubdirCount = b_int(f)
-                for x in range(SubdirCount):
-                    Subdir = b_numstring(f)
-                f.seek(1, 1)
-                InlineSubdirCount = b_int(f)
-                for x in range(InlineSubdirCount):
-                    InlineSubdir = b_numstring(f)
-                f.seek(16, 1)
-                DirType2 = b_numstring(f)
-                DirName2 = b_numstring(f)
-                f.seek(9, 1)
-                EntryCount = b_int(f)
-                BoneNames = []
-                BoneFiles = []
-                for x in range(EntryCount):
-                    DirType3 = b_numstring(f)
-                    DirName3 = b_numstring(f)
-                    if DirType3 == "Trans":
-                        BoneNames.append(DirName3)
-                rest_file = f.read()
-                files = rest_file.split(b'\xAD\xDE\xAD\xDE')
-                for file in files:
-                    header = file[:4]
-                    if header == b'\x00\x00\x00\x0B':
-                        DC3Tex(self, file)
-                    elif header == b'\x00\x00\x00\x26':
-                        DC3Mesh(self, file)
-                    elif header == b'\x00\x00\x00\x09':
-                        BoneFiles.append(file)
-                        DC3Trans(self, file, BoneNames, BoneFiles)
+                        if header == b'\x00\x00\x00\x0B':
+                            DC3Tex(self, file)
+                        elif header == b'\x00\x00\x00\x26':
+                            DC3Mesh(self, file)
+                        elif header == b'\x00\x00\x00\x09':
+                            BoneFiles.append(file)
+                            DC3Trans(self, file, BoneNames, BoneFiles)
         return {'FINISHED'}                
 
 def Tex(context, basename, self, filename, file):
