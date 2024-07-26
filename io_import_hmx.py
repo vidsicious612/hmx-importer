@@ -1462,6 +1462,10 @@ def Mesh(self, context, filename, file, basename, MatTexNames, MatTexFiles):
             if self.low_lod_setting:
                 if "LOD01" in filename or "LOD02" in filename:
                     return
+        else:
+            if self.low_lod_setting:
+                if "LOD02" in filename:
+                    return
         if self.shadow_setting:
             if "shadow" in filename:
                 return
