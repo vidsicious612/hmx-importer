@@ -1458,9 +1458,10 @@ def Mesh(self, context, filename, file, basename, MatTexNames, MatTexFiles):
                             a = b_float(f)
                             mat.diffuse_color = (r, g, b, a)
     if Version == 37 and BigEndian == True:
-        if self.low_lod_setting:
-            if "LOD01" in filename or "LOD02" in filename:
-                return
+        if not basename.endswith('.milo_wii'):
+            if self.low_lod_setting:
+                if "LOD01" in filename or "LOD02" in filename:
+                    return
         if self.shadow_setting:
             if "shadow" in filename:
                 return
