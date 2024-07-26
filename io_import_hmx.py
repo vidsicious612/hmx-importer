@@ -81,15 +81,19 @@ class ImportMilo(Operator, ImportHelper):
     ) 
     
     GameItems = [
-        ('OPTION_A', 'RB2', ''),
-        ('OPTION_B', 'LRB', ''),
-        ('OPTION_C', 'GDRB', ''),
-        ('OPTION_D', 'RB3', ''),
+        ('OPTION_A', 'GH1', ''),
+        ('OPTION_B', 'GH2 / GH80s', ''),
+        ('OPTION_C', 'RB1 / RB2', ''),
+        ('OPTION_D', 'RB2 Prototype + LRB Wii', ''),
+        ('OPTION_E', 'TBRB', ''),
+        ('OPTION_F', 'LRB', ''),
+        ('OPTION_G', 'GDRB', ''),
+        ('OPTION_H', 'RB3', ''),
     ]
         
     bpy.types.Scene.games = EnumProperty(
         name="Game",
-        description="Select a game for texture import.",
+        description="Select a game.",
         items=GameItems,
     )
     
@@ -129,23 +133,13 @@ class ImportMilo(Operator, ImportHelper):
                 for x in range(FileCount):
                     compressed.append(l_int(f))
                 f.seek(StartOffset)
-                # Hacky way to guess endian
-                Versions = [6, 10, 24, 25, 28, 32]
-                LittleEndian = False
-                BigEndian = False
-                Version = struct.unpack('I', f.read(4))[0]
-                if Version not in Versions:
-                    BigEndian = True
-                    f.seek(-4, 1)
-                    Version = struct.unpack('>I', f.read(4))[0]
-                elif Version in Versions:
-                    LittleEndian = True
+                f.seek(4, 1)
                 dirs = []
                 filenames = []
                 MatTexNames = []
                 MatTexFiles = []
                 # GH1
-                if Version == 10 and LittleEndian == True:
+                if context.scene.games == 'OPTION_A':
                     EntryCount = l_int(f)
                     for x in range(EntryCount):
                         dirs.append(l_numstring(f))
@@ -168,9 +162,9 @@ class ImportMilo(Operator, ImportHelper):
                         if "bone" in name and "Mesh" in directory:
                             Trans(basename, name, file)
                         if "TransAnim" in directory:
-                            TransAnim(file)
-                # GH2 PS2
-                elif Version == 24 and LittleEndian == True:
+                            TransAnim(context, file)
+                # GH2 / GH80s
+                elif context.scene.games == 'OPTION_B':
                     DirType = l_numstring(f)
                     DirName = l_numstring(f)
                     dirs.append(DirType)
@@ -195,9 +189,9 @@ class ImportMilo(Operator, ImportHelper):
                         if ".mesh" in name and "Trans" in directory:
                             Trans(basename, name, file)            
                         if "TransAnim" in directory:
-                            TransAnim(file)
-                # GH2 360
-                elif Version == 25 and LittleEndian == True:
+                            TransAnim(context, file)
+                # RB2 Prototype + Lego wii
+                elif context.scene.games == 'OPTION_D':
                     DirType = l_numstring(f)
                     DirName = l_numstring(f)
                     dirs.append(DirType)
@@ -208,24 +202,23 @@ class ImportMilo(Operator, ImportHelper):
                         dirs.append(l_numstring(f))
                         filenames.append(l_numstring(f))
                     rest_file = f.read()
-                    files = rest_file.split(b'\xAD\xDE\xAD\xDE')
+                    files = rest_file.split(b'\xAD\xDE\xAD\xDE')                
                     for directory, name, file in zip(dirs, filenames, files):
                         if ".mat" in name and "Mat" in directory:
                             MatTexNames.append(name)
                             MatTexFiles.append(file)
                         if "Tex" in directory:
                             if not "TexBlend" in directory:
-                                Tex(context, basename, self, name, file)
                                 MatTexNames.append(name)
                                 MatTexFiles.append(file)
                         if ".mesh" in name and "Mesh" in directory:
                             Mesh(self, context, name, file, basename, MatTexNames, MatTexFiles)
                         if ".mesh" in name and "Trans" in directory:
-                            Trans(basename, name, file)
+                            Trans(basename, name, file)            
                         if "TransAnim" in directory:
-                            TransAnim(file)
+                            TransAnim(context, file)
                 # RB2-GDRB
-                elif Version == 25 and BigEndian == True:
+                elif context.scene.games == 'OPTION_C' or 'OPTION_E' or 'OPTION_F' or 'OPTION_G':
                     DirType = b_numstring(f)
                     DirName = b_numstring(f)
                     dirs.append(DirType)
@@ -245,9 +238,9 @@ class ImportMilo(Operator, ImportHelper):
                             elif header == b'\x00\x00\x00\x24':
                                 VenueMesh(self, file)
                             elif header == b'\x00\x00\x00\x07':
-                                TransAnim(file)
+                                TransAnim(context, file)
                             elif header == b'\x00\x00\x00\x0B':
-                                PropAnim(file)
+                                PropAnim(context, file)
                     rest_file = f.read()
                     files = rest_file.split(b'\xAD\xDE\xAD\xDE')
                     for directory, name, file in zip(dirs, filenames, files):
@@ -264,13 +257,11 @@ class ImportMilo(Operator, ImportHelper):
                         if ".mesh" in name and "Trans" in directory:
                             Trans(basename, name, file)
                         if "TransAnim" in directory:
-                            TransAnim(file)
-                        elif "CharClipSamples" in directory:
-                            CharClipSamples(name, file)
+                            TransAnim(context, file)
                         elif "PropAnim" in directory:
-                            PropAnim(file)
+                            PropAnim(context, file)
                 # RB3-DC2
-                elif Version == 28 and BigEndian == True:
+                elif context.scene.games == 'OPTION_H':
                     DirType = b_numstring(f)
                     DirName = b_numstring(f)
                     dirs.append(DirType)
@@ -296,98 +287,26 @@ class ImportMilo(Operator, ImportHelper):
                         if ".mesh" in name and "Trans" in directory:
                             Trans(basename, name, file)
                         if "TransAnim" in directory:
-                            TransAnim(file)
-                # DC3-and on
-                elif Version == 32 and BigEndian == True:
-                    DirType = b_numstring(f)
-                    DirName = b_numstring(f)
-                    dirs.append(DirType)
-                    filenames.append(DirName)
-                    f.seek(9, 1)
-                    EntryCount = b_int(f)
-                    for x in range(EntryCount):
-                        dirs.append(b_numstring(f))
-                        filenames.append(b_numstring(f))
-                    f.seek(16, 1)
-                    Type = b_numstring(f)
-                    f.seek(8, 1)
-                    ViewportCount = b_int(f)
-                    for x in range(ViewportCount):
-                        f.read(48)
-                    f.seek(9, 1)
-                    SubdirCount = b_int(f)
-                    for x in range(SubdirCount):
-                        Subdir = b_numstring(f)
-                    f.seek(1, 1)
-                    InlineSubdirCount = b_int(f)
-                    for x in range(InlineSubdirCount):
-                        InlineSubdir = b_numstring(f)
-                    f.seek(16, 1)
-                    DirType2 = b_numstring(f)
-                    DirName2 = b_numstring(f)
-                    f.seek(9, 1)
-                    EntryCount = b_int(f)
-                    BoneNames = []
-                    BoneFiles = []
-                    for x in range(EntryCount):
-                        DirType3 = b_numstring(f)
-                        DirName3 = b_numstring(f)
-                        if DirType3 == "Trans":
-                            BoneNames.append(DirName3)
-                    rest_file = f.read()
-                    files = rest_file.split(b'\xAD\xDE\xAD\xDE')
-                    for file in files:
-                        header = file[:4]
-                        if header == b'\x00\x00\x00\x0B':
-                            DC3Tex(self, file)
-                        elif header == b'\x00\x00\x00\x26':
-                            DC3Mesh(self, file)
-                        elif header == b'\x00\x00\x00\x09':
-                            BoneFiles.append(file)
-                            DC3Trans(self, file, BoneNames, BoneFiles)
+                            TransAnim(context, file)
+
         return {'FINISHED'}                
 
 def Tex(context, basename, self, filename, file):
     try:
         directory = os.path.dirname(self.filepath)
         f = io.BytesIO(file)
-        # Hacky way to guess endian
-        Versions = [5, 7, 8, 10, 11]
-        LittleEndian = False
-        BigEndian = False
-        Version = struct.unpack('I', f.read(4))[0]
-        if Version not in Versions:
-            BigEndian = True
-            f.seek(-4, 1)
-            Version = struct.unpack('>I', f.read(4))[0]
-        elif Version in Versions:
-            LittleEndian = True
-        if Version == 10:
+        if context.scene.games == 'OPTION_B' and basename.endswith('.milo_xbox'):
             f.seek(17)
             # Extract width and height
-            if LittleEndian == True:
-                Width = l_int(f)
-                Height = l_int(f)
-            if BigEndian == True:
-                Width = b_int(f)
-                Height = b_int(f)
+            Width = l_int(f)
+            Height = l_int(f)
             f.seek(4, 1)
             # Grab texture name
-            # Lego developers were on something...
-            if LittleEndian == True:
-                TextureName = l_numstring(f)
-            if BigEndian == True:
-                TextureName = b_numstring(f)
+            TextureName = l_numstring(f)
             f.seek(11, 1)
-            if LittleEndian == True:
-                Encoding = l_int(f)
-            if BigEndian == True:
-                Encoding = b_int(f)
+            Encoding = l_int(f)
             # Grab mipmap count
-            if LittleEndian == True:
-                MipMapCount = struct.unpack('B', f.read(1))
-            if BigEndian == True:
-                MipMapCount = struct.unpack('>B', f.read(1))
+            MipMapCount = struct.unpack('>B', f.read(1))
             MipMapCount = int.from_bytes(MipMapCount, byteorder='little')
             EncodeOut = b''
             if Encoding == 8:
@@ -398,87 +317,52 @@ def Tex(context, basename, self, filename, file):
                 EncodeOut = b'\x41\x54\x49\x32'
             f.seek(25, 1)
             # Read bitmap (just reads the rest of the file as we already grabbed all important header data)
-            if not basename.endswith('.milo_xbox'):
-                Bitmap = f.read()
-            else:
-                BitmapOffset = f.tell()
-                Bitmap = f.read()
-                f.seek(BitmapOffset)
-                Pixels = []
-                for x in range(len(Bitmap)):
-                    Pixel1 = f.read(1)
-                    Pixel2 = f.read(1)
-                    Pixels.append((Pixel2, Pixel1))
-            if basename.endswith('.milo_wii'):
-                file_path = os.path.join(directory, filename[:-4] + ".tpl")
-            else:
-                file_path = os.path.join(directory, filename[:-4] + ".dds")
+            BitmapOffset = f.tell()
+            Bitmap = f.read()
+            f.seek(BitmapOffset)
+            Pixels = []
+            for x in range(len(Bitmap)):
+                Pixel1 = f.read(1)
+                Pixel2 = f.read(1)
+                Pixels.append((Pixel2, Pixel1))
+            file_path = os.path.join(directory, filename[:-4] + ".dds")
 
             # Export texture out
-            if basename.endswith('.milo_wii'):
-                with open(file_path, 'wb') as output_file:
-                    output_file.write(b'\x00\x20\xAF\x30')
-                    output_file.write(struct.pack('>IIII', 1, 12, 20, 0))
-                    output_file.write(struct.pack('>HH', Height, Width))
-                    output_file.write(struct.pack('>II', 14, 64))
-                    output_file.write(struct.pack('>IIII', 0, 0, 1, 1))
-                    output_file.write(struct.pack('>f', 0))
-                    output_file.write(struct.pack('>BBBB', 0, 0, 0, 0))
-                    for x in range(2):
-                        output_file.write(struct.pack('>I', 0))
-                    output_file.write(Bitmap)
-            else:
-                with open(file_path, 'wb') as output_file:
-                    output_file.write(struct.pack('ccc', b'D', b'D', b'S',))
-                    output_file.write(b'\x20')
-                    output_file.write(struct.pack('I', 124))
-                    output_file.write(struct.pack('I', 528391))
-                    output_file.write(struct.pack('I', Height))
-                    output_file.write(struct.pack('I', Width))
-                    output_file.write(struct.pack('III', 0, 0, MipMapCount))
-                    for x in range(11):
-                        output_file.write(struct.pack('I', 0))
-                    output_file.write(struct.pack('I', 32))
-                    output_file.write(struct.pack('I', 4))
-                    output_file.write(EncodeOut)
-                    output_file.write(struct.pack('IIIII', 0, 0, 0, 0, 0))
-                    output_file.write(struct.pack('I', 4096))
-                    output_file.write(struct.pack('IIII', 0, 0, 0, 0))
-                    if not basename.endswith('.milo_xbox'):            
-                        output_file.write(Bitmap)
-                    else:
-                        for Pixel in Pixels:
-                            byte1, byte2 = Pixel
-                            output_file.write(byte1)
-                            output_file.write(byte2)
+            with open(file_path, 'wb') as output_file:
+                output_file.write(struct.pack('ccc', b'D', b'D', b'S',))
+                output_file.write(b'\x20')
+                output_file.write(struct.pack('I', 124))
+                output_file.write(struct.pack('I', 528391))
+                output_file.write(struct.pack('I', Height))
+                output_file.write(struct.pack('I', Width))
+                output_file.write(struct.pack('III', 0, 0, MipMapCount))
+                for x in range(11):
+                    output_file.write(struct.pack('I', 0))
+                output_file.write(struct.pack('I', 32))
+                output_file.write(struct.pack('I', 4))
+                output_file.write(EncodeOut)
+                output_file.write(struct.pack('IIIII', 0, 0, 0, 0, 0))
+                output_file.write(struct.pack('I', 4096))
+                output_file.write(struct.pack('IIII', 0, 0, 0, 0))
+                for Pixel in Pixels:
+                    byte1, byte2 = Pixel
+                    output_file.write(byte1)
+                    output_file.write(byte2)
             
             print("Exported texture:", file_path)
-        if context.scene.games == 'OPTION_B':
+        if context.scene.games == 'OPTION_C' or 'OPTION_E':
             f.seek(17)
             # Extract width and height
-            if LittleEndian == True:
-                Width = l_int(f)
-                Height = l_int(f)
-            if BigEndian == True:
-                Width = b_int(f)
-                Height = b_int(f)                
+            Width = b_int(f)
+            Height = b_int(f)                
             # Grab texture name
             # Lego developers were on something...
-            f.seek(8, 1)
-            if LittleEndian == True:
-                TextureName = l_numstring(f)
-            if BigEndian == True:
-                TextureName = b_numstring(f)
+            f.seek(4, 1)
+            TextureName = b_numstring(f)
             f.seek(11, 1)
-            if LittleEndian == True:
-                Encoding = l_int(f)
-            if BigEndian == True:
-                Encoding = b_int(f)
+            Encoding = b_int(f)
             # Grab mipmap count
-            if LittleEndian == True:
-                MipMapCount = struct.unpack('B', f.read(1))
-            if BigEndian == True:
-                MipMapCount = struct.unpack('>B', f.read(1))
+            MipMapCount = struct.unpack('>B', f.read(1))
             MipMapCount = int.from_bytes(MipMapCount, byteorder='little')
             EncodeOut = b''
             if Encoding == 8:
@@ -541,32 +425,131 @@ def Tex(context, basename, self, filename, file):
                             output_file.write(byte2)
             
             print("Exported texture:", file_path)
-        elif context.scene.games == 'OPTION_C':
-            f.seek(18)
+        if context.scene.games == 'OPTION_D':
+            f.seek(17)
             # Extract width and height
-            if LittleEndian == True:
-                Width = l_int(f)
-                Height = l_int(f)
-            if BigEndian == True:
-                Width = b_int(f)
-                Height = b_int(f)                
+            Width = l_int(f)
+            Height = l_int(f)                
             # Grab texture name
             # Lego developers were on something...
             f.seek(4, 1)
-            if LittleEndian == True:
-                TextureName = l_numstring(f)
-            if BigEndian == True:
-                TextureName = b_numstring(f)
+            TextureName = l_numstring(f)
             f.seek(11, 1)
-            if LittleEndian == True:
-                Encoding = l_int(f)
-            if BigEndian == True:
-                Encoding = b_int(f)
+            Encoding = l_int(f)
             # Grab mipmap count
-            if LittleEndian == True:
-                MipMapCount = struct.unpack('B', f.read(1))
-            if BigEndian == True:
-                MipMapCount = struct.unpack('>B', f.read(1))
+            MipMapCount = struct.unpack('B', f.read(1))
+            MipMapCount = int.from_bytes(MipMapCount, byteorder='little')
+            EncodeOut = b''
+            if Encoding == 8:
+                EncodeOut = b'\x44\x58\x54\x31'
+            elif Encoding == 24:
+                EncodeOut = b'\x44\x58\x54\x35'
+            elif Encoding == 32:
+                EncodeOut = b'\x41\x54\x49\x32'
+            f.seek(25, 1)
+            # Read bitmap (just reads the rest of the file as we already grabbed all important header data)
+            Bitmap = f.read()
+            file_path = os.path.join(directory, filename[:-4] + ".tpl")
+
+            # Export texture out
+            with open(file_path, 'wb') as output_file:
+                output_file.write(b'\x00\x20\xAF\x30')
+                output_file.write(struct.pack('>IIIIII', 1, 12, 20, 0, Height, Width))
+                output_file.write(struct.pack('>II', 14, 64))
+                output_file.write(struct.pack('>IIII', 0, 0, 1, 1))
+                output_file.write(struct.pack('>f', 0))
+                output_file.write(struct.pack('>BBBB', 0, 0, 0, 0))
+                output_file.write(Bitmap)
+            
+            print("Exported texture:", file_path)
+        if context.scene.games == 'OPTION_F':
+            f.seek(17)
+            # Extract width and height
+            Width = b_int(f)
+            Height = b_int(f)                
+            # Grab texture name
+            # Lego developers were on something...
+            f.seek(8, 1)
+            TextureName = b_numstring(f)
+            f.seek(11, 1)
+            Encoding = b_int(f)
+            # Grab mipmap count
+            MipMapCount = struct.unpack('>B', f.read(1))
+            MipMapCount = int.from_bytes(MipMapCount, byteorder='little')
+            EncodeOut = b''
+            if Encoding == 8:
+                EncodeOut = b'\x44\x58\x54\x31'
+            elif Encoding == 24:
+                EncodeOut = b'\x44\x58\x54\x35'
+            elif Encoding == 32:
+                EncodeOut = b'\x41\x54\x49\x32'
+            f.seek(25, 1)
+            # Read bitmap (just reads the rest of the file as we already grabbed all important header data)
+            if not basename.endswith('.milo_xbox'):
+                Bitmap = f.read()
+            else:
+                BitmapOffset = f.tell()
+                Bitmap = f.read()
+                f.seek(BitmapOffset)
+                Pixels = []
+                for x in range(len(Bitmap)):
+                    Pixel1 = f.read(1)
+                    Pixel2 = f.read(1)
+                    Pixels.append((Pixel2, Pixel1))
+            if basename.endswith('.milo_wii'):
+                file_path = os.path.join(directory, filename[:-4] + ".tpl")
+            else:
+                file_path = os.path.join(directory, filename[:-4] + ".dds")
+
+            # Export texture out
+            if basename.endswith('.milo_wii'):
+                with open(file_path, 'wb') as output_file:
+                    output_file.write(b'\x00\x20\xAF\x30')
+                    output_file.write(struct.pack('>IIIIII', 1, 12, 20, 0, Height, Width))
+                    output_file.write(struct.pack('>II', 14, 64))
+                    output_file.write(struct.pack('>IIII', 0, 0, 1, 1))
+                    output_file.write(struct.pack('>f', 0))
+                    output_file.write(struct.pack('>BBBB', 0, 0, 0, 0))
+                    output_file.write(Bitmap)
+            else:
+                with open(file_path, 'wb') as output_file:
+                    output_file.write(struct.pack('ccc', b'D', b'D', b'S',))
+                    output_file.write(b'\x20')
+                    output_file.write(struct.pack('I', 124))
+                    output_file.write(struct.pack('I', 528391))
+                    output_file.write(struct.pack('I', Height))
+                    output_file.write(struct.pack('I', Width))
+                    output_file.write(struct.pack('III', 0, 0, MipMapCount))
+                    for x in range(11):
+                        output_file.write(struct.pack('I', 0))
+                    output_file.write(struct.pack('I', 32))
+                    output_file.write(struct.pack('I', 4))
+                    output_file.write(EncodeOut)
+                    output_file.write(struct.pack('IIIII', 0, 0, 0, 0, 0))
+                    output_file.write(struct.pack('I', 4096))
+                    output_file.write(struct.pack('IIII', 0, 0, 0, 0))
+                    if not basename.endswith('.milo_xbox'):            
+                        output_file.write(Bitmap)
+                    else:
+                        for Pixel in Pixels:
+                            byte1, byte2 = Pixel
+                            output_file.write(byte1)
+                            output_file.write(byte2)
+            
+            print("Exported texture:", file_path)
+        elif context.scene.games == 'OPTION_G':
+            f.seek(18)
+            # Extract width and height
+            Width = b_int(f)
+            Height = b_int(f)                
+            # Grab texture name
+            # Lego developers were on something...
+            f.seek(4, 1)
+            TextureName = b_numstring(f)
+            f.seek(11, 1)
+            Encoding = b_int(f)
+            # Grab mipmap count
+            MipMapCount = struct.unpack('>B', f.read(1))
             MipMapCount = int.from_bytes(MipMapCount, byteorder='little')
             EncodeOut = b''
             if Encoding == 8:
@@ -629,32 +612,19 @@ def Tex(context, basename, self, filename, file):
                             output_file.write(byte2)
             
             print("Exported texture:", file_path)            
-        elif context.scene.games == 'OPTION_D':
+        elif context.scene.games == 'OPTION_H':
             f.seek(17)
             # Extract width and height
-            if LittleEndian == True:
-                Width = l_int(f)
-                Height = l_int(f)
-            if BigEndian == True:
-                Width = b_int(f)
-                Height = b_int(f)
+            Width = b_int(f)
+            Height = b_int(f)
             f.seek(4, 1)
             # Grab texture name
             # Lego developers were on something...
-            if LittleEndian == True:
-                TextureName = l_numstring(f)
-            if BigEndian == True:
-                TextureName = b_numstring(f)
+            TextureName = b_numstring(f)
             f.seek(12, 1)
-            if LittleEndian == True:
-                Encoding = l_int(f)
-            if BigEndian == True:
-                Encoding = b_int(f)
+            Encoding = b_int(f)
             # Grab mipmap count
-            if LittleEndian == True:
-                MipMapCount = struct.unpack('B', f.read(1))
-            if BigEndian == True:
-                MipMapCount = struct.unpack('>B', f.read(1))
+            MipMapCount = struct.unpack('>B', f.read(1))
             MipMapCount = int.from_bytes(MipMapCount, byteorder='little')
             EncodeOut = b''
             if Encoding == 8:
@@ -723,148 +693,8 @@ def Tex(context, basename, self, filename, file):
         print(e)
         
 def Mesh(self, context, filename, file, basename, MatTexNames, MatTexFiles):
-    f = io.BytesIO(file)
-    # Hacky way to guess endian
-    Versions = [10, 13, 14, 22, 25, 28, 29, 34, 36, 37, 38]
-    LittleEndian = False
-    BigEndian = False
-    Version = struct.unpack('I', f.read(4))[0]
-    if Version not in Versions:
-        BigEndian = True
-        f.seek(-4, 1)
-        Version = struct.unpack('>I', f.read(4))[0]
-    if Version in Versions:
-        LittleEndian = True
-    if Version == 14 and LittleEndian == True:
-        f.seek(8)
-        LocalTFM = struct.unpack('12f', f.read(48))
-        WorldTFM = struct.unpack('12f', f.read(48))
-        TransCount = l_int(f)
-        for x in range(TransCount):
-            TransObject = l_numstring(f)
-        f.seek(16, 1)
-        f.seek(5, 1)
-        DrawCount = l_int(f)
-        for x in range(DrawCount):
-            DrawObject = l_numstring(f)
-        f.seek(4, 1)
-        BoneCount = l_int(f)
-        for x in range(BoneCount):
-            Bone = l_numstring(f)
-        f.seek(8, 1)
-        MatName = l_numstring(f)
-        MeshName = l_numstring(f)
-        TransParent = l_numstring(f)
-        f.seek(16, 1)
-        UnkString = l_numstring(f)
-        f.seek(5, 1)
-        VertCount = l_int(f)
-        Verts = []
-        Normals = []
-        Weights = []
-        UVs = []
-        Indices = []
-        for i in range(VertCount):
-            x, y, z = struct.unpack('fff', f.read(12))
-            b1, b2, b3, b4 = struct.unpack('HHHH', f.read(8))
-            nx, ny, nz = struct.unpack('fff', f.read(12))
-            w1, w2, w3, w4 = struct.unpack('ffff', f.read(16))
-            u, v = struct.unpack('ff', f.read(8))
-            Verts.append((x, y, z))
-            Normals.append((nx, ny, nz))
-            Weights.append((w1, w2, w3, w4))
-            UVs.append((u, v))
-            Indices.append((b1, b2, b3, b4))
-        FaceCount = l_int(f)
-        Faces = []
-        for x in range(FaceCount):
-            Face = struct.unpack('HHH', f.read(6))
-            Faces.append(Face)
-        mesh = bpy.data.meshes.new(name=filename)
-        obj = bpy.data.objects.new(filename, mesh)
-        bpy.context.scene.collection.objects.link(obj)
-        obj.matrix_world = mathutils.Matrix((
-            (WorldTFM[0], WorldTFM[3], WorldTFM[6], WorldTFM[9],),
-            (WorldTFM[1], WorldTFM[4], WorldTFM[7], WorldTFM[10],),
-            (WorldTFM[2], WorldTFM[5], WorldTFM[8], WorldTFM[11],),
-            (0.0, 0.0, 0.0, 1.0),
-        ))
-        mesh.from_pydata(Verts, [], Faces)
-        mesh.use_auto_smooth = True
-        uv_layer = mesh.uv_layers.new(name="UVMap")
-        for face in mesh.polygons:
-            face.use_smooth = True
-            for loop_index in face.loop_indices:
-                vertex_index = mesh.loops[loop_index].vertex_index
-                uv = UVs[vertex_index]
-                flip = (uv[0], 1 - uv[1])
-                uv_layer.data[loop_index].uv = flip
-        mesh.update()            
-    if Version == 22 and LittleEndian == True:
-        f.seek(8)
-        LocalTFM = struct.unpack('12f', f.read(48))
-        WorldTFM = struct.unpack('12f', f.read(48))
-        TransCount = l_int(f)
-        for x in range(TransCount):
-            TransObject = l_numstring(f)
-        f.seek(4, 1)
-        Target = l_numstring(f)
-        f.seek(1, 1)
-        Parent = l_numstring(f)
-        f.seek(5, 1)
-        DrawCount = l_int(f)
-        for x in range(DrawCount):
-            DrawObject = l_numstring(f)
-        f.seek(16, 1)
-        MatName = l_numstring(f)
-        MeshName = l_numstring(f)
-        f.seek(8, 1)
-        HasTree = struct.unpack('B', f.read(1))[0]
-        if HasTree == 1:
-            return
-        VertCount = l_int(f)
-        Verts = []
-        Normals = []
-        Weights = []
-        UVs = []
-        Indices = []
-        for i in range(VertCount):
-            x, y, z = struct.unpack('fff', f.read(12))
-            b1, b2, b3, b4 = struct.unpack('HHHH', f.read(8))
-            nx, ny, nz = struct.unpack('fff', f.read(12))
-            w1, w2, w3, w4 = struct.unpack('ffff', f.read(16))
-            u, v = struct.unpack('ff', f.read(8))
-            Verts.append((x, y, z))
-            Normals.append((nx, ny, nz))
-            Weights.append((w1, w2, w3, w4))
-            UVs.append((u, v))
-            Indices.append((b1, b2, b3, b4))
-        FaceCount = l_int(f)
-        Faces = []
-        for x in range(FaceCount):
-            Face = struct.unpack('HHH', f.read(6))
-            Faces.append(Face)
-        mesh = bpy.data.meshes.new(name=filename)
-        obj = bpy.data.objects.new(filename, mesh)
-        bpy.context.scene.collection.objects.link(obj)
-        obj.matrix_world = mathutils.Matrix((
-            (WorldTFM[0], WorldTFM[3], WorldTFM[6], WorldTFM[9],),
-            (WorldTFM[1], WorldTFM[4], WorldTFM[7], WorldTFM[10],),
-            (WorldTFM[2], WorldTFM[5], WorldTFM[8], WorldTFM[11],),
-            (0.0, 0.0, 0.0, 1.0),
-        ))
-        mesh.from_pydata(Verts, [], Faces)
-        mesh.use_auto_smooth = True
-        uv_layer = mesh.uv_layers.new(name="UVMap")
-        for face in mesh.polygons:
-            face.use_smooth = True
-            for loop_index in face.loop_indices:
-                vertex_index = mesh.loops[loop_index].vertex_index
-                uv = UVs[vertex_index]
-                flip = (uv[0], 1 - uv[1])
-                uv_layer.data[loop_index].uv = flip
-        mesh.update()        
-    if Version == 25 and LittleEndian == True:
+    f = io.BytesIO(file)                    
+    if context.scene.games == 'OPTION_A':
         if self.shadow_setting:
             if "shadow" in filename:
                 return
@@ -915,17 +745,23 @@ def Mesh(self, context, filename, file, basename, MatTexNames, MatTexFiles):
             (0.0, 0.0, 0.0, 1.0),
         ))
         mesh.from_pydata(Verts, [], Faces)
-        mesh.use_auto_smooth = True
         uv_layer = mesh.uv_layers.new(name="UVMap")
         for face in mesh.polygons:
-            face.use_smooth = True
             for loop_index in face.loop_indices:
                 vertex_index = mesh.loops[loop_index].vertex_index
                 uv = UVs[vertex_index]
                 flip = (uv[0], 1 - uv[1])
                 uv_layer.data[loop_index].uv = flip
-        mesh.update()
-    if Version == 28 and LittleEndian == True:
+        if len(Normals) != 0:
+            mesh.use_auto_smooth = True
+            mesh.normals_split_custom_set_from_vertices(Normals)
+            mesh.update()
+        else:
+            mesh.use_auto_smooth = True
+            for face in mesh.polygons:
+                face.use_smooth = True
+            mesh.update()
+    elif context.scene.games == 'OPTION_B':
         if self.shadow_setting:
             if "shadow" in filename:
                 return
@@ -981,7 +817,15 @@ def Mesh(self, context, filename, file, basename, MatTexNames, MatTexFiles):
                 uv = UVs[vertex_index]
                 flip = (uv[0], 1 - uv[1])
                 uv_layer.data[loop_index].uv = flip
-        mesh.update()
+        if len(Normals) != 0:
+            mesh.use_auto_smooth = True
+            mesh.normals_split_custom_set_from_vertices(Normals)
+            mesh.update()
+        else:
+            mesh.use_auto_smooth = True
+            for face in mesh.polygons:
+                face.use_smooth = True
+            mesh.update()
         if basename.endswith('.milo_xbox'):
             if len(MatName) != 0:
                 mat = bpy.data.materials.get(MatName)
@@ -1040,7 +884,7 @@ def Mesh(self, context, filename, file, basename, MatTexNames, MatTexFiles):
                             b = l_float(f)
                             a = l_float(f)
                             mat.diffuse_color = (r, g, b, a)            
-    if Version == 34 and LittleEndian == True:
+    elif context.scene.games == 'OPTION_D':
         # RB2 prototype + Lego
         if self.low_lod_setting:
             if "lod01" in filename or "lod02" in filename:
@@ -1066,7 +910,7 @@ def Mesh(self, context, filename, file, basename, MatTexNames, MatTexFiles):
         UVs = []
         Indices = []
         for i in range(VertCount):
-            if context.scene.games == 'OPTION_A':
+            if context.scene.games == 'OPTION_D':
                 x, y, z = struct.unpack('fff', f.read(12))                
                 nx, ny, nz = struct.unpack('fff', f.read(12))
                 w1, w2, w3, w4 = struct.unpack('ffff', f.read(16))
@@ -1078,7 +922,7 @@ def Mesh(self, context, filename, file, basename, MatTexNames, MatTexFiles):
                 Weights.append((w1, w2, w3, w4))
                 UVs.append((u, v))
                 Indices.append((b1, b2, b3, b4))
-            elif context.scene.games == 'OPTION_B':
+            elif context.scene.games == 'OPTION_F':
                 x, y, z, w = struct.unpack('ffff', f.read(16))                
                 nx, ny, nz, nw = struct.unpack('ffff', f.read(16))
                 w1, w2, w3, w4 = struct.unpack('ffff', f.read(16))
@@ -1123,7 +967,15 @@ def Mesh(self, context, filename, file, basename, MatTexNames, MatTexFiles):
                 uv = UVs[vertex_index]
                 flip = (uv[0], 1 - uv[1])
                 uv_layer.data[loop_index].uv = flip
-        mesh.update()
+        if len(Normals) != 0:
+            mesh.use_auto_smooth = True
+            mesh.normals_split_custom_set_from_vertices(Normals)
+            mesh.update()
+        else:
+            mesh.use_auto_smooth = True
+            for face in mesh.polygons:
+                face.use_smooth = True
+            mesh.update()
         bpy.ops.object.select_all(action='DESELECT')
         obj.select_set(True)
         bpy.context.view_layer.objects.active = obj
@@ -1154,7 +1006,7 @@ def Mesh(self, context, filename, file, basename, MatTexNames, MatTexFiles):
                     obj.data.materials[0] = mat
                 else:
                     obj.data.materials.append(mat)
-    if Version == 34 and BigEndian == True:
+    elif context.scene.games == 'OPTION_C' or context.scene.games == 'OPTION_F':
         if self.low_lod_setting:
             if "lod01" in filename or "lod02" in filename:
                 return
@@ -1217,12 +1069,12 @@ def Mesh(self, context, filename, file, basename, MatTexNames, MatTexFiles):
         mesh.use_auto_smooth = True
         uv_layer = mesh.uv_layers.new(name="UVMap")
         for face in mesh.polygons:
-            face.use_smooth = True
             for loop_index in face.loop_indices:
                 vertex_index = mesh.loops[loop_index].vertex_index
                 uv = UVs[vertex_index]
                 flip = (uv[0], 1 - uv[1])
                 uv_layer.data[loop_index].uv = flip
+        mesh.normals_split_custom_set_from_vertices(Normals)
         mesh.update()
         bpy.ops.object.select_all(action='DESELECT')
         obj.select_set(True)
@@ -1301,7 +1153,7 @@ def Mesh(self, context, filename, file, basename, MatTexNames, MatTexFiles):
                         b = b_float(f)
                         a = b_float(f)
                         mat.diffuse_color = (r, g, b, a)                    
-    if Version == 36 and BigEndian == True:
+    elif context.scene.games == 'OPTION_E':
         if self.low_lod_setting:
             if "lod01" in filename or "lod02" in filename:
                 return
@@ -1373,16 +1225,22 @@ def Mesh(self, context, filename, file, basename, MatTexNames, MatTexFiles):
             (0.0, 0.0, 0.0, 1.0),
         ))
         mesh.from_pydata(Verts, [], Faces)
-        mesh.use_auto_smooth = True
         uv_layer = mesh.uv_layers.new(name="UVMap")
         for face in mesh.polygons:
-            face.use_smooth = True
             for loop_index in face.loop_indices:
                 vertex_index = mesh.loops[loop_index].vertex_index
                 uv = UVs[vertex_index]
                 flip = (uv[0], 1 - uv[1])
                 uv_layer.data[loop_index].uv = flip
-        mesh.update()
+        if len(Normals) != 0:
+            mesh.use_auto_smooth = True
+            mesh.normals_split_custom_set_from_vertices(Normals)
+            mesh.update()
+        else:
+            mesh.use_auto_smooth = True
+            for face in mesh.polygons:
+                face.use_smooth = True
+            mesh.update()        
         if basename.endswith('.milo_wii'):
             bpy.ops.object.select_all(action='DESELECT')
             obj.select_set(True)
@@ -1461,7 +1319,7 @@ def Mesh(self, context, filename, file, basename, MatTexNames, MatTexFiles):
                         b = b_float(f)
                         a = b_float(f)
                         mat.diffuse_color = (r, g, b, a)
-    if Version == 37 and BigEndian == True:
+    elif context.scene.games == 'OPTION_G':
         if not basename.endswith('.milo_wii'):
             if self.low_lod_setting:
                 if "LOD01" in filename or "LOD02" in filename:
@@ -1538,16 +1396,22 @@ def Mesh(self, context, filename, file, basename, MatTexNames, MatTexFiles):
             (0.0, 0.0, 0.0, 1.0),
         ))
         mesh.from_pydata(Verts, [], Faces)
-        mesh.use_auto_smooth = True
         uv_layer = mesh.uv_layers.new(name="UVMap")
         for face in mesh.polygons:
-            face.use_smooth = True
             for loop_index in face.loop_indices:
                 vertex_index = mesh.loops[loop_index].vertex_index
                 uv = UVs[vertex_index]
                 flip = (uv[0], 1 - uv[1])
                 uv_layer.data[loop_index].uv = flip
-        mesh.update()
+        if len(Normals) != 0:
+            mesh.use_auto_smooth = True
+            mesh.normals_split_custom_set_from_vertices(Normals)
+            mesh.update()
+        else:
+            mesh.use_auto_smooth = True
+            for face in mesh.polygons:
+                face.use_smooth = True
+            mesh.update()
         if basename.endswith('.milo_wii'):
             bpy.ops.object.select_all(action='DESELECT')
             obj.select_set(True)
@@ -1626,7 +1490,7 @@ def Mesh(self, context, filename, file, basename, MatTexNames, MatTexFiles):
                         b = b_float(f)
                         a = b_float(f)
                         mat.diffuse_color = (r, g, b, a)
-    if Version == 38 and BigEndian == True:
+    elif context.scene.games == 'OPTION_H':
         if self.low_lod_setting:
             if "lod01" in filename or "lod02" in filename:
                 return
@@ -1698,16 +1562,22 @@ def Mesh(self, context, filename, file, basename, MatTexNames, MatTexFiles):
             (0.0, 0.0, 0.0, 1.0),
         ))
         mesh.from_pydata(Verts, [], Faces)
-        mesh.use_auto_smooth = True
         uv_layer = mesh.uv_layers.new(name="UVMap")
         for face in mesh.polygons:
-            face.use_smooth = True
             for loop_index in face.loop_indices:
                 vertex_index = mesh.loops[loop_index].vertex_index
                 uv = UVs[vertex_index]
                 flip = (uv[0], 1 - uv[1])
                 uv_layer.data[loop_index].uv = flip
-        mesh.update()
+        if len(Normals) != 0:
+            mesh.use_auto_smooth = True
+            mesh.normals_split_custom_set_from_vertices(Normals)
+            mesh.update()
+        else:
+            mesh.use_auto_smooth = True
+            for face in mesh.polygons:
+                face.use_smooth = True
+            mesh.update()
         if basename.endswith('.milo_wii'):
             bpy.ops.object.select_all(action='DESELECT')
             obj.select_set(True)
@@ -2279,21 +2149,10 @@ def Trans(basename, filename, file):
         pose_bone.location = LocalPos  
     bpy.ops.object.mode_set(mode='OBJECT')
         
-def TransAnim(file):
+def TransAnim(context, file):
     f = io.BytesIO(file)
-    # Hacky way to guess endian
-    Versions = [4, 6, 7]
-    LittleEndian = False
-    BigEndian = False
-    Version = struct.unpack('I', f.read(4))[0]
-    if Version not in Versions:
-        BigEndian = True
-        f.seek(-4, 1)
-        Version = struct.unpack('>I', f.read(4))[0]
-    elif Version in Versions:
-        LittleEndian = True
     bpy.context.scene.render.fps = 30
-    if Version == 4 and LittleEndian == True:
+    if context.scene.games == 'OPTION_A':
         f.seek(8)
         AnimEntryCount = l_int(f)
         for x in range(AnimEntryCount):
@@ -2327,7 +2186,7 @@ def TransAnim(file):
             Pos = l_float(f)
             obj.scale = Scale
             obj.keyframe_insert("scale", frame=Pos)
-    if Version == 6 and LittleEndian == True:
+    elif context.scene.games == 'OPTION_B':
         f.seek(29)
         TransObject = l_numstring(f)
         obj = bpy.data.objects.get(TransObject)
@@ -2354,7 +2213,7 @@ def TransAnim(file):
             Pos = l_float(f)
             obj.scale = Scale
             obj.keyframe_insert("scale", frame=Pos)
-    if Version == 7 and BigEndian == True:
+    elif context.scene.games == 'OPTION_E' or 'OPTION_G':
         f.seek(29)
         TransObject = b_numstring(f)
         obj = bpy.data.objects.get(TransObject)
@@ -2382,20 +2241,10 @@ def TransAnim(file):
             obj.scale = Scale
             obj.keyframe_insert("scale", frame=Pos)
         
-def PropAnim(file):
+def PropAnim(context, file):
     f = io.BytesIO(file)
     # Hacky way to guess endian
-    Versions = [11, 12, 13]
-    LittleEndian = False
-    BigEndian = False
-    Version = struct.unpack('I', f.read(4))[0]
-    if not Version in Versions:
-        BigEndian = True
-        f.seek(-4, 1)
-        Version = struct.unpack('>I', f.read(4))[0]
-    elif Version in Versions:
-        LittleEndian = True
-    if Version == 11 and BigEndian == True:
+    if context.scene.games == 'OPTION_E' or 'OPTION_G':
         f.seek(29)
         PropKeysCount = b_int(f)
         f.seek(8, 1)
@@ -2420,47 +2269,6 @@ def PropAnim(file):
                 obj.keyframe_insert("location", frame=Pos)
         
                     
-def CharClipSamples(name, file):
-    f = io.BytesIO(file)
-    # Hacky way to guess endian
-    Versions = [10, 11, 13, 15, 16]
-    LittleEndian = False
-    BigEndian = False
-    Version = struct.unpack('I', f.read(4))[0]
-    if Version not in Versions:
-        BigEndian = True
-        f.seek(-4, 1)
-        Version = struct.unpack('>I', f.read(4))[0]
-    elif Version in Versions:
-        LittleEndian = True
-    if Version == 16 and BigEndian == True:
-        f.seek(12)
-        AnimType = b_numstring(f)
-        f.seek(59, 1)
-        BoneCount = b_int(f)
-        BoneNames = []
-        for x in range(BoneCount):
-            BoneName = b_numstring(f)
-            BoneNames.append(BoneName)
-            Weight = b_float(f)
-        for x in range(7):
-            Count = b_int(f)
-        f.seek(4, 1)
-        NumSamples = b_int(f)
-        NumFrames = b_int(f)
-        armature = bpy.data.objects.get('Armature')
-        for x in range(NumFrames):
-            Frame = b_float(f)
-        for x in range(NumSamples):
-            for Name in BoneNames:
-                if Name.endswith('.pos'):
-                    X, Y, Z = struct.unpack('>hhh', f.read(6))
-                    X, Y, Z = (X / 32767, Y / 32767, X / 32767)
-                    bpy.ops.object.mode_set(mode='POSE')
-                    Pos = armature.pose.bones.get(Name.replace('.pos', '.mesh'))
-                    Pos.location = (X, Y, Z)
-                    Pos.keyframe_insert("location", frame=x)
-                    bpy.ops.object.mode_set(mode='OBJECT')
 
         
 def menu_func_import(self, context):
