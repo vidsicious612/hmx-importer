@@ -246,6 +246,8 @@ class ImportMilo(Operator, ImportHelper):
                                 VenueMesh(self, file)
                             elif header == b'\x00\x00\x00\x07':
                                 TransAnim(file)
+                            elif header == b'\x00\x00\x00\x0B':
+                                PropAnim(file)
                     rest_file = f.read()
                     files = rest_file.split(b'\xAD\xDE\xAD\xDE')
                     for directory, name, file in zip(dirs, filenames, files):
@@ -263,6 +265,10 @@ class ImportMilo(Operator, ImportHelper):
                             Trans(basename, name, file)
                         if "TransAnim" in directory:
                             TransAnim(file)
+                        elif "CharClipSamples" in directory:
+                            CharClipSamples(name, file)
+                        elif "PropAnim" in directory:
+                            PropAnim(file)
                 # RB3-DC2
                 elif Version == 28 and BigEndian == True:
                     DirType = b_numstring(f)
@@ -1248,54 +1254,53 @@ def Mesh(self, context, filename, file, basename, MatTexNames, MatTexFiles):
                     obj.data.materials[0] = mat
                 else:
                     obj.data.materials.append(mat)
-        if not basename.endswith('.milo_wii'):
-            for name, file in zip(MatTexNames, MatTexFiles):
-                if name.endswith('.tex'):
-                    texture = bpy.data.textures.new(name=name, type='IMAGE')
-                    base_folder = os.path.dirname(self.filepath)
-                    texpath = os.path.join(base_folder, name[:-4] + ".dds")
-                    if os.path.exists(texpath):
-                        image = bpy.data.images.load(texpath)
-                        texture.image = image
-                elif name.endswith('.mat'):
-                    mat = bpy.data.materials.get(name)
-                    if mat:
-                        f = io.BytesIO(file)
+        for name, file in zip(MatTexNames, MatTexFiles):
+            if name.endswith('.tex'):
+                texture = bpy.data.textures.new(name=name, type='IMAGE')
+                base_folder = os.path.dirname(self.filepath)
+                texpath = os.path.join(base_folder, name[:-4] + ".dds")
+                if os.path.exists(texpath):
+                    image = bpy.data.images.load(texpath)
+                    texture.image = image
+            elif name.endswith('.mat'):
+                mat = bpy.data.materials.get(name)
+                if mat:
+                    f = io.BytesIO(file)
+                    f.seek(12)
+                    HasTree = struct.unpack('>B', f.read(1))
+                    if HasTree == 1:
+                        ChildCount = struct.unpack('>H', f.read(2))[0]
+                        ID = b_int(f)
+                        for x in range(ChildCount):
+                            NodeType = b_int(f)
+                            Child = b_numstring(f)
+                    f.seek(92, 1)
+                    TexName = b_numstring(f)
+                    tex = bpy.data.textures.get(TexName)
+                    if tex:
+                        if not mat.use_nodes:
+                            mat.use_nodes = True
+                        bsdf = mat.node_tree.nodes.get("Principled BSDF")
+                        if bsdf:
+                            tex_node = mat.node_tree.nodes.new('ShaderNodeTexImage')
+                            tex_node.image = tex.image
+                            links = mat.node_tree.links
+                            links.new(bsdf.inputs['Base Color'], tex_node.outputs['Color'])            
+                    else:
                         f.seek(12)
-                        HasTree = struct.unpack('B', f.read(1))
+                        HasTree = struct.unpack('>B', f.read(1))
                         if HasTree == 1:
-                            ChildCount = struct.unpack('H', f.read(2))[0]
-                            ID = l_int(f)
+                            ChildCount = struct.unpack('>H', f.read(2))[0]
+                            ID = b_int(f)
                             for x in range(ChildCount):
-                                NodeType = l_int(f)
-                                Child = l_numstring(f)
-                        f.seek(92, 1)
-                        TexName = b_numstring(f)
-                        tex = bpy.data.textures.get(TexName)
-                        if tex:
-                            if not mat.use_nodes:
-                                mat.use_nodes = True
-                            bsdf = mat.node_tree.nodes.get("Principled BSDF")
-                            if bsdf:
-                                tex_node = mat.node_tree.nodes.new('ShaderNodeTexImage')
-                                tex_node.image = tex.image
-                                links = mat.node_tree.links
-                                links.new(bsdf.inputs['Base Color'], tex_node.outputs['Color'])            
-                        else:
-                            f.seek(12)
-                            HasTree = struct.unpack('B', f.read(1))
-                            if HasTree == 1:
-                                ChildCount = struct.unpack('H', f.read(2))[0]
-                                ID = l_int(f)
-                                for x in range(ChildCount):
-                                    NodeType = l_int(f)
-                                    Child = l_numstring(f)
-                            f.seek(8, 1)
-                            r = b_float(f)
-                            g = b_float(f)
-                            b = b_float(f)
-                            a = b_float(f)
-                            mat.diffuse_color = (r, g, b, a)                    
+                                NodeType = b_int(f)
+                                Child = b_numstring(f)
+                        f.seek(8, 1)
+                        r = b_float(f)
+                        g = b_float(f)
+                        b = b_float(f)
+                        a = b_float(f)
+                        mat.diffuse_color = (r, g, b, a)                    
     if Version == 36 and BigEndian == True:
         if self.low_lod_setting:
             if "lod01" in filename or "lod02" in filename:
@@ -1409,54 +1414,53 @@ def Mesh(self, context, filename, file, basename, MatTexNames, MatTexFiles):
                     obj.data.materials[0] = mat
                 else:
                     obj.data.materials.append(mat)
-        if not basename.endswith('.milo_wii'):
-            for name, file in zip(MatTexNames, MatTexFiles):
-                if name.endswith('.tex'):
-                    texture = bpy.data.textures.new(name=name, type='IMAGE')
-                    base_folder = os.path.dirname(self.filepath)
-                    texpath = os.path.join(base_folder, name[:-4] + ".dds")
-                    if os.path.exists(texpath):
-                        image = bpy.data.images.load(texpath)
-                        texture.image = image
-                elif name.endswith('.mat'):
-                    mat = bpy.data.materials.get(name)
-                    if mat:
-                        f = io.BytesIO(file)
+        for name, file in zip(MatTexNames, MatTexFiles):
+            if name.endswith('.tex'):
+                texture = bpy.data.textures.new(name=name, type='IMAGE')
+                base_folder = os.path.dirname(self.filepath)
+                texpath = os.path.join(base_folder, name[:-4] + ".dds")
+                if os.path.exists(texpath):
+                    image = bpy.data.images.load(texpath)
+                    texture.image = image
+            elif name.endswith('.mat'):
+                mat = bpy.data.materials.get(name)
+                if mat:
+                    f = io.BytesIO(file)
+                    f.seek(12)
+                    HasTree = struct.unpack('>B', f.read(1))
+                    if HasTree == 1:
+                        ChildCount = struct.unpack('>H', f.read(2))[0]
+                        ID = b_int(f)
+                        for x in range(ChildCount):
+                            NodeType = b_int(f)
+                            Child = b_numstring(f)
+                    f.seek(92, 1)
+                    TexName = b_numstring(f)
+                    tex = bpy.data.textures.get(TexName)
+                    if tex:
+                        if not mat.use_nodes:
+                            mat.use_nodes = True
+                        bsdf = mat.node_tree.nodes.get("Principled BSDF")
+                        if bsdf:
+                            tex_node = mat.node_tree.nodes.new('ShaderNodeTexImage')
+                            tex_node.image = tex.image
+                            links = mat.node_tree.links
+                            links.new(bsdf.inputs['Base Color'], tex_node.outputs['Color'])            
+                    else:
                         f.seek(12)
-                        HasTree = struct.unpack('B', f.read(1))
+                        HasTree = struct.unpack('>B', f.read(1))
                         if HasTree == 1:
-                            ChildCount = struct.unpack('H', f.read(2))[0]
-                            ID = l_int(f)
+                            ChildCount = struct.unpack('>H', f.read(2))[0]
+                            ID = b_int(f)
                             for x in range(ChildCount):
-                                NodeType = l_int(f)
-                                Child = l_numstring(f)
-                        f.seek(92, 1)
-                        TexName = b_numstring(f)
-                        tex = bpy.data.textures.get(TexName)
-                        if tex:
-                            if not mat.use_nodes:
-                                mat.use_nodes = True
-                            bsdf = mat.node_tree.nodes.get("Principled BSDF")
-                            if bsdf:
-                                tex_node = mat.node_tree.nodes.new('ShaderNodeTexImage')
-                                tex_node.image = tex.image
-                                links = mat.node_tree.links
-                                links.new(bsdf.inputs['Base Color'], tex_node.outputs['Color'])            
-                        else:
-                            f.seek(12)
-                            HasTree = struct.unpack('B', f.read(1))
-                            if HasTree == 1:
-                                ChildCount = struct.unpack('H', f.read(2))[0]
-                                ID = l_int(f)
-                                for x in range(ChildCount):
-                                    NodeType = l_int(f)
-                                    Child = l_numstring(f)
-                            f.seek(8, 1)
-                            r = b_float(f)
-                            g = b_float(f)
-                            b = b_float(f)
-                            a = b_float(f)
-                            mat.diffuse_color = (r, g, b, a)
+                                NodeType = b_int(f)
+                                Child = b_numstring(f)
+                        f.seek(8, 1)
+                        r = b_float(f)
+                        g = b_float(f)
+                        b = b_float(f)
+                        a = b_float(f)
+                        mat.diffuse_color = (r, g, b, a)
     if Version == 37 and BigEndian == True:
         if not basename.endswith('.milo_wii'):
             if self.low_lod_setting:
@@ -1575,54 +1579,53 @@ def Mesh(self, context, filename, file, basename, MatTexNames, MatTexFiles):
                     obj.data.materials[0] = mat
                 else:
                     obj.data.materials.append(mat)
-        if not basename.endswith('.milo_wii'):
-            for name, file in zip(MatTexNames, MatTexFiles):
-                if name.endswith('.tex'):
-                    texture = bpy.data.textures.new(name=name, type='IMAGE')
-                    base_folder = os.path.dirname(self.filepath)
-                    texpath = os.path.join(base_folder, name[:-4] + ".dds")
-                    if os.path.exists(texpath):
-                        image = bpy.data.images.load(texpath)
-                        texture.image = image
-                elif name.endswith('.mat'):
-                    mat = bpy.data.materials.get(name)
-                    if mat:
-                        f = io.BytesIO(file)
+        for name, file in zip(MatTexNames, MatTexFiles):
+            if name.endswith('.tex'):
+                texture = bpy.data.textures.new(name=name, type='IMAGE')
+                base_folder = os.path.dirname(self.filepath)
+                texpath = os.path.join(base_folder, name[:-4] + ".dds")
+                if os.path.exists(texpath):
+                    image = bpy.data.images.load(texpath)
+                    texture.image = image
+            elif name.endswith('.mat'):
+                mat = bpy.data.materials.get(name)
+                if mat:
+                    f = io.BytesIO(file)
+                    f.seek(12)
+                    HasTree = struct.unpack('>B', f.read(1))
+                    if HasTree == 1:
+                        ChildCount = struct.unpack('>H', f.read(2))[0]
+                        ID = b_int(f)
+                        for x in range(ChildCount):
+                            NodeType = b_int(f)
+                            Child = b_numstring(f)
+                    f.seek(92, 1)
+                    TexName = b_numstring(f)
+                    tex = bpy.data.textures.get(TexName)
+                    if tex:
+                        if not mat.use_nodes:
+                            mat.use_nodes = True
+                        bsdf = mat.node_tree.nodes.get("Principled BSDF")
+                        if bsdf:
+                            tex_node = mat.node_tree.nodes.new('ShaderNodeTexImage')
+                            tex_node.image = tex.image
+                            links = mat.node_tree.links
+                            links.new(bsdf.inputs['Base Color'], tex_node.outputs['Color'])            
+                    else:
                         f.seek(12)
-                        HasTree = struct.unpack('B', f.read(1))
+                        HasTree = struct.unpack('>B', f.read(1))
                         if HasTree == 1:
-                            ChildCount = struct.unpack('H', f.read(2))[0]
-                            ID = l_int(f)
+                            ChildCount = struct.unpack('>H', f.read(2))[0]
+                            ID = b_int(f)
                             for x in range(ChildCount):
-                                NodeType = l_int(f)
-                                Child = l_numstring(f)
-                        f.seek(92, 1)
-                        TexName = b_numstring(f)
-                        tex = bpy.data.textures.get(TexName)
-                        if tex:
-                            if not mat.use_nodes:
-                                mat.use_nodes = True
-                            bsdf = mat.node_tree.nodes.get("Principled BSDF")
-                            if bsdf:
-                                tex_node = mat.node_tree.nodes.new('ShaderNodeTexImage')
-                                tex_node.image = tex.image
-                                links = mat.node_tree.links
-                                links.new(bsdf.inputs['Base Color'], tex_node.outputs['Color'])            
-                        else:
-                            f.seek(12)
-                            HasTree = struct.unpack('B', f.read(1))
-                            if HasTree == 1:
-                                ChildCount = struct.unpack('H', f.read(2))[0]
-                                ID = l_int(f)
-                                for x in range(ChildCount):
-                                    NodeType = l_int(f)
-                                    Child = l_numstring(f)
-                            f.seek(8, 1)
-                            r = b_float(f)
-                            g = b_float(f)
-                            b = b_float(f)
-                            a = b_float(f)
-                            mat.diffuse_color = (r, g, b, a)
+                                NodeType = b_int(f)
+                                Child = b_numstring(f)
+                        f.seek(8, 1)
+                        r = b_float(f)
+                        g = b_float(f)
+                        b = b_float(f)
+                        a = b_float(f)
+                        mat.diffuse_color = (r, g, b, a)
     if Version == 38 and BigEndian == True:
         if self.low_lod_setting:
             if "lod01" in filename or "lod02" in filename:
@@ -1736,54 +1739,53 @@ def Mesh(self, context, filename, file, basename, MatTexNames, MatTexFiles):
                     obj.data.materials[0] = mat
                 else:
                     obj.data.materials.append(mat)
-        if not basename.endswith('.milo_wii'):
-            for name, file in zip(MatTexNames, MatTexFiles):
-                if name.endswith('.tex'):
-                    texture = bpy.data.textures.new(name=name, type='IMAGE')
-                    base_folder = os.path.dirname(self.filepath)
-                    texpath = os.path.join(base_folder, name[:-4] + ".dds")
-                    if os.path.exists(texpath):
-                        image = bpy.data.images.load(texpath)
-                        texture.image = image
-                elif name.endswith('.mat'):
-                    mat = bpy.data.materials.get(name)
-                    if mat:
-                        f = io.BytesIO(file)
+        for name, file in zip(MatTexNames, MatTexFiles):
+            if name.endswith('.tex'):
+                texture = bpy.data.textures.new(name=name, type='IMAGE')
+                base_folder = os.path.dirname(self.filepath)
+                texpath = os.path.join(base_folder, name[:-4] + ".dds")
+                if os.path.exists(texpath):
+                    image = bpy.data.images.load(texpath)
+                    texture.image = image
+            elif name.endswith('.mat'):
+                mat = bpy.data.materials.get(name)
+                if mat:
+                    f = io.BytesIO(file)
+                    f.seek(12)
+                    HasTree = struct.unpack('>B', f.read(1))
+                    if HasTree == 1:
+                        ChildCount = struct.unpack('>H', f.read(2))[0]
+                        ID = b_int(f)
+                        for x in range(ChildCount):
+                            NodeType = b_int(f)
+                            Child = b_numstring(f)
+                    f.seek(92, 1)
+                    TexName = b_numstring(f)
+                    tex = bpy.data.textures.get(TexName)
+                    if tex:
+                        if not mat.use_nodes:
+                            mat.use_nodes = True
+                        bsdf = mat.node_tree.nodes.get("Principled BSDF")
+                        if bsdf:
+                            tex_node = mat.node_tree.nodes.new('ShaderNodeTexImage')
+                            tex_node.image = tex.image
+                            links = mat.node_tree.links
+                            links.new(bsdf.inputs['Base Color'], tex_node.outputs['Color'])            
+                    else:
                         f.seek(12)
-                        HasTree = struct.unpack('B', f.read(1))
+                        HasTree = struct.unpack('>B', f.read(1))
                         if HasTree == 1:
-                            ChildCount = struct.unpack('H', f.read(2))[0]
-                            ID = l_int(f)
+                            ChildCount = struct.unpack('>H', f.read(2))[0]
+                            ID = b_int(f)
                             for x in range(ChildCount):
-                                NodeType = l_int(f)
-                                Child = l_numstring(f)
-                        f.seek(92, 1)
-                        TexName = b_numstring(f)
-                        tex = bpy.data.textures.get(TexName)
-                        if tex:
-                            if not mat.use_nodes:
-                                mat.use_nodes = True
-                            bsdf = mat.node_tree.nodes.get("Principled BSDF")
-                            if bsdf:
-                                tex_node = mat.node_tree.nodes.new('ShaderNodeTexImage')
-                                tex_node.image = tex.image
-                                links = mat.node_tree.links
-                                links.new(bsdf.inputs['Base Color'], tex_node.outputs['Color'])            
-                        else:
-                            f.seek(12)
-                            HasTree = struct.unpack('B', f.read(1))
-                            if HasTree == 1:
-                                ChildCount = struct.unpack('H', f.read(2))[0]
-                                ID = l_int(f)
-                                for x in range(ChildCount):
-                                    NodeType = l_int(f)
-                                    Child = l_numstring(f)
-                            f.seek(8, 1)
-                            r = b_float(f)
-                            g = b_float(f)
-                            b = b_float(f)
-                            a = b_float(f)
-                            mat.diffuse_color = (r, g, b, a)                            
+                                NodeType = b_int(f)
+                                Child = b_numstring(f)
+                        f.seek(8, 1)
+                        r = b_float(f)
+                        g = b_float(f)
+                        b = b_float(f)
+                        a = b_float(f)
+                        mat.diffuse_color = (r, g, b, a)                            
 def DC3Tex(self, file):
     try:
         directory = os.path.dirname(self.filepath)
@@ -2380,6 +2382,85 @@ def TransAnim(file):
             obj.scale = Scale
             obj.keyframe_insert("scale", frame=Pos)
         
+def PropAnim(file):
+    f = io.BytesIO(file)
+    # Hacky way to guess endian
+    Versions = [11, 12, 13]
+    LittleEndian = False
+    BigEndian = False
+    Version = struct.unpack('I', f.read(4))[0]
+    if not Version in Versions:
+        BigEndian = True
+        f.seek(-4, 1)
+        Version = struct.unpack('>I', f.read(4))[0]
+    elif Version in Versions:
+        LittleEndian = True
+    if Version == 11 and BigEndian == True:
+        f.seek(29)
+        PropKeysCount = b_int(f)
+        f.seek(8, 1)
+        Target = b_numstring(f)
+        obj = bpy.data.objects.get(Target)
+        if obj is None:
+            return
+        f.seek(1, 1)
+        ChildCount = struct.unpack('>H', f.read(2))[0]
+        ID = b_int(f)
+        for x in range(ChildCount):
+            f.seek(4, 1)
+            # Value defines if this is position, rotation, scale, etc.
+            Value = b_numstring(f)
+        f.seek(12, 1)
+        EventCount = b_int(f)
+        for x in range(EventCount):
+            if Value == "position":
+                Position = struct.unpack('>fff', f.read(12))
+                Pos = b_float(f)
+                obj.location = Position
+                obj.keyframe_insert("location", frame=Pos)
+        
+                    
+def CharClipSamples(name, file):
+    f = io.BytesIO(file)
+    # Hacky way to guess endian
+    Versions = [10, 11, 13, 15, 16]
+    LittleEndian = False
+    BigEndian = False
+    Version = struct.unpack('I', f.read(4))[0]
+    if Version not in Versions:
+        BigEndian = True
+        f.seek(-4, 1)
+        Version = struct.unpack('>I', f.read(4))[0]
+    elif Version in Versions:
+        LittleEndian = True
+    if Version == 16 and BigEndian == True:
+        f.seek(12)
+        AnimType = b_numstring(f)
+        f.seek(59, 1)
+        BoneCount = b_int(f)
+        BoneNames = []
+        for x in range(BoneCount):
+            BoneName = b_numstring(f)
+            BoneNames.append(BoneName)
+            Weight = b_float(f)
+        for x in range(7):
+            Count = b_int(f)
+        f.seek(4, 1)
+        NumSamples = b_int(f)
+        NumFrames = b_int(f)
+        armature = bpy.data.objects.get('Armature')
+        for x in range(NumFrames):
+            Frame = b_float(f)
+        for x in range(NumSamples):
+            for Name in BoneNames:
+                if Name.endswith('.pos'):
+                    X, Y, Z = struct.unpack('>hhh', f.read(6))
+                    X, Y, Z = (X / 32767, Y / 32767, X / 32767)
+                    bpy.ops.object.mode_set(mode='POSE')
+                    Pos = armature.pose.bones.get(Name.replace('.pos', '.mesh'))
+                    Pos.location = (X, Y, Z)
+                    Pos.keyframe_insert("location", frame=x)
+                    bpy.ops.object.mode_set(mode='OBJECT')
 
         
 def menu_func_import(self, context):
