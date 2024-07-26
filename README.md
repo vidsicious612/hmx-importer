@@ -13,10 +13,6 @@ To fix the other meshes, select the meshes that dont have right transforms, then
 
 Games it currently supports:
 
-Amplitude
-
-EyeToy: AntiGrav
-
 GH1
 
 GH2 PS2 + 360
@@ -34,8 +30,6 @@ LRB
 GDRB
 
 RB3
-
-DC3
 
 Expect a lot of updates to the repo, as this is a daily project for me.
 
