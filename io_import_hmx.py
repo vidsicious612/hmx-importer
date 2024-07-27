@@ -157,6 +157,7 @@ class ImportMilo(Operator, ImportHelper):
                             if not "TexBlend" in directory:
                                 MatTexNames.append(name)
                                 MatTexFiles.append(file)
+                            Tex(context, basename, self, name, file)
                         if ".mesh" in name and "Mesh" in directory:
                             Mesh(self, context, name, file, basename, MatTexNames, MatTexFiles)
                         if "bone" in name and "Mesh" in directory:
@@ -184,6 +185,7 @@ class ImportMilo(Operator, ImportHelper):
                             if not "TexBlend" in directory:
                                 MatTexNames.append(name)
                                 MatTexFiles.append(file)
+                            Tex(context, basename, self, name, file)
                         if ".mesh" in name and "Mesh" in directory:
                             Mesh(self, context, name, file, basename, MatTexNames, MatTexFiles)
                         if ".mesh" in name and "Trans" in directory:
@@ -211,6 +213,7 @@ class ImportMilo(Operator, ImportHelper):
                             if not "TexBlend" in directory:
                                 MatTexNames.append(name)
                                 MatTexFiles.append(file)
+                            Tex(context, basename, self, name, file)
                         if ".mesh" in name and "Mesh" in directory:
                             Mesh(self, context, name, file, basename, MatTexNames, MatTexFiles)
                         if ".mesh" in name and "Trans" in directory:
@@ -229,18 +232,55 @@ class ImportMilo(Operator, ImportHelper):
                         dirs.append(b_numstring(f))
                         filenames.append(b_numstring(f))
                     if self.venue_setting:
+                        f.seek(0)
                         rest_file = f.read()
-                        files = rest_file.split(b'\xAD\xDE\xAD\xDE')
-                        for file in files:
-                            header = file[:4]
-                            if header == b'\x00\x00\x00\x0A':
-                                VenueTex(basename, self, file)
-                            elif header == b'\x00\x00\x00\x24':
-                                VenueMesh(self, file)
-                            elif header == b'\x00\x00\x00\x07':
-                                TransAnim(context, file)
-                            elif header == b'\x00\x00\x00\x0B':
-                                PropAnim(context, file)
+                        sequence = "_geom".encode('utf-8')
+                        offset = rest_file.find(sequence)
+                        f.seek(offset)
+                        f.seek(5, 1)
+                        print(f.tell())
+                        # Sullivan has something weird
+                        name = f.read(6)
+                        if name == b'\x30\x31\x2E\x65\x6E\x76':
+                            sec_offset = rest_file.find(sequence, offset + len(sequence))
+                            f.seek(sec_offset)
+                            f.seek(5, 1)
+                            f.seek(9, 1)
+                            print(f.tell())
+                        else:
+                            f.seek(8, 1)
+                            print(f.tell())
+                            print(f.tell())
+                        geomdirs = []
+                        geomnames = []
+                        DirType = b_numstring(f)
+                        DirName = b_numstring(f)
+                        geomdirs.append(DirType)
+                        geomnames.append(DirName)
+                        f.seek(8, 1)
+                        EntryCount = b_int(f)
+                        for x in range(EntryCount):
+                            geomdirs.append(b_numstring(f))
+                            geomnames.append(b_numstring(f))
+                        rest = f.read()
+                        files = rest.split(b'\xAD\xDE\xAD\xDE')
+                        files = files[:len(geomnames)]
+                        for directory, name, file in zip(geomdirs, geomnames, files):
+                            if ".mat" in name and "Mat" in directory:
+                                MatTexNames.append(name)
+                                MatTexFiles.append(file)
+                            if "Tex" in directory:
+                                if not "TexBlend" in directory:
+                                    Tex(context, basename, self, name, file)
+                                    MatTexNames.append(name)
+                                    MatTexFiles.append(file)
+                                Tex(context, basename, self, name, file)
+                            if ".mesh" in name and "Mesh" in directory:
+                                Mesh(self, context, name, file, basename, MatTexNames, MatTexFiles)                            
+                        if "TransAnim" in directory:
+                            TransAnim(context, file)
+                        elif "PropAnim" in directory:
+                            PropAnim(context, file)
                     rest_file = f.read()
                     files = rest_file.split(b'\xAD\xDE\xAD\xDE')
                     for directory, name, file in zip(dirs, filenames, files):
@@ -252,6 +292,7 @@ class ImportMilo(Operator, ImportHelper):
                                 Tex(context, basename, self, name, file)
                                 MatTexNames.append(name)
                                 MatTexFiles.append(file)
+                            Tex(context, basename, self, name, file)
                         if ".mesh" in name and "Mesh" in directory:
                             Mesh(self, context, name, file, basename, MatTexNames, MatTexFiles)
                         if ".mesh" in name and "Trans" in directory:
@@ -260,6 +301,8 @@ class ImportMilo(Operator, ImportHelper):
                             TransAnim(context, file)
                         elif "PropAnim" in directory:
                             PropAnim(context, file)
+                        elif "CharClipSamples" in directory:
+                            CharClipSamples(self, file)
                 # RB3-DC2
                 elif context.scene.games == 'OPTION_H':
                     DirType = b_numstring(f)
@@ -817,26 +860,21 @@ def Mesh(self, context, filename, file, basename, MatTexNames, MatTexFiles):
                 uv = UVs[vertex_index]
                 flip = (uv[0], 1 - uv[1])
                 uv_layer.data[loop_index].uv = flip
-        if len(Normals) != 0:
-            mesh.use_auto_smooth = True
-            mesh.normals_split_custom_set_from_vertices(Normals)
-            mesh.update()
-        else:
-            mesh.use_auto_smooth = True
-            for face in mesh.polygons:
-                face.use_smooth = True
-            mesh.update()
+        mesh.use_auto_smooth = True
+        mesh.normals_split_custom_set_from_vertices(Normals)
+        mesh.update()
+        bpy.context.view_layer.objects.active = obj
+        if len(MatName) != 0:
+            mat = bpy.data.materials.get(MatName)
+            if mat is None:
+                mat = bpy.data.materials.new(name=MatName)
+            obj = bpy.context.active_object
+            if obj:
+                if obj.data.materials:
+                    obj.data.materials[0] = mat
+                else:
+                    obj.data.materials.append(mat)
         if basename.endswith('.milo_xbox'):
-            if len(MatName) != 0:
-                mat = bpy.data.materials.get(MatName)
-                if mat is None:
-                    mat = bpy.data.materials.new(name=MatName)
-                obj = bpy.context.active_object
-                if obj:
-                    if obj.data.materials:
-                        obj.data.materials[0] = mat
-                    else:
-                        obj.data.materials.append(mat)
             for name, file in zip(MatTexNames, MatTexFiles):
                 if name.endswith('.tex'):
                     texture = bpy.data.textures.new(name=name, type='IMAGE')
@@ -1172,10 +1210,13 @@ def Mesh(self, context, filename, file, basename, MatTexNames, MatTexFiles):
         MeshName = b_numstring(f)
         f.seek(9, 1)
         VertCount = b_int(f)
-        if basename.endswith('.milo_wii'):
-            f.seek(1, 1)
-        else:
-            f.seek(9, 1)
+        f.seek(1, 1)
+        if basename.endswith('.milo_ps3'):
+            VertSize = b_int(f)
+            if VertSize != 36:
+                return
+            elif VertSize == 36:
+                f.seek(4, 1)
         Verts = []
         Normals = []
         Weights = []
@@ -2258,8 +2299,61 @@ def PropAnim(context, file):
                 obj.keyframe_insert("location", frame=Pos)
         
                     
+def CharClipSamples(self, file):
+    f = io.BytesIO(file)
+    f.seek(12)
+    AnimType = b_numstring(f)
+    f.seek(59, 1)
+    BoneCount = b_int(f)
+    BoneNames = []
+    for x in range(BoneCount):
+        BoneName = b_numstring(f)
+        BoneNames.append(BoneName)
+        Weight = b_float(f)
+    for x in range(7):
+        Count = b_int(f)
+    # Koby is a dumb fuck
+    f.seek(4, 1)
+    NumSamples = b_int(f)
+    NumFrames = b_int(f)
+    Frames = []
+    for x in range(NumFrames):
+        Frame = b_float(f)
+        Frames.append(Frame)
+    Armature = bpy.data.objects.get('Armature')
+    frame_index = 0
+    for x in range(NumSamples):
+        for Name in BoneNames:
+            if "pos" in Name:
+                x, y, z = struct.unpack('>hhh', f.read(6))
+                x_float = x / 32767
+                y_float = y / 32767
+                z_float = z / 32767
+                x_float = x_float * 1345
+                y_float = y_float * 1345
+                z_float = z_float * 1345
+                Name = Name.replace('.pos', '.mesh')
+                Bone = Armature.pose.bones.get(Name)
+                if Bone and frame_index < len(Frames):
+                    Bone.location = (x_float, y_float, z_float)
+                    Bone.keyframe_insert("location", frame=Frames[frame_index])
+                frame_index += 1
+            elif "quat" in Name:
+                x, y, z, w = struct.unpack('>hhhh', f.read(8))
+                x_float = x / 32767
+                y_float = y / 32767
+                z_float = z / 32767
+                w_float = w / 32767
+                Name = Name.replace('.quat', '.mesh')
+                Bone = Armature.pose.bones.get(Name)
+                if Bone and frame_index < len(Frames):
+                    Bone.rotation_mode = 'QUATERNION'
+                    Bone.rotation_quaternion = (w_float, x_float, -z_float, y_float)
+                    Bone.keyframe_insert("rotation_quaternion", frame=Frames[frame_index])
+                frame_index += 1
+            elif "rotz" in Name:
+                rotz = f.read(2)
 
-        
 def menu_func_import(self, context):
     self.layout.operator(ImportMilo.bl_idname, text="Milo Importer")
     
