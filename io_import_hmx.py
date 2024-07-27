@@ -160,7 +160,7 @@ class ImportMilo(Operator, ImportHelper):
                         if ".mesh" in name and "Mesh" in directory:
                             Mesh(self, context, name, file, basename, MatTexNames, MatTexFiles)
                         if "bone" in name and "Mesh" in directory:
-                            Trans(basename, name, file)
+                            Trans(basename, context, name, file)
                         if "TransAnim" in directory:
                             TransAnim(context, file)
                 # GH2 / GH80s
@@ -187,7 +187,7 @@ class ImportMilo(Operator, ImportHelper):
                         if ".mesh" in name and "Mesh" in directory:
                             Mesh(self, context, name, file, basename, MatTexNames, MatTexFiles)
                         if ".mesh" in name and "Trans" in directory:
-                            Trans(basename, name, file)            
+                            Trans(basename, context, name, file)            
                         if "TransAnim" in directory:
                             TransAnim(context, file)
                 # RB2 Prototype + Lego wii
@@ -214,7 +214,7 @@ class ImportMilo(Operator, ImportHelper):
                         if ".mesh" in name and "Mesh" in directory:
                             Mesh(self, context, name, file, basename, MatTexNames, MatTexFiles)
                         if ".mesh" in name and "Trans" in directory:
-                            Trans(basename, name, file)            
+                            Trans(basename, context, name, file)            
                         if "TransAnim" in directory:
                             TransAnim(context, file)
                 # RB2-GDRB
@@ -255,7 +255,7 @@ class ImportMilo(Operator, ImportHelper):
                         if ".mesh" in name and "Mesh" in directory:
                             Mesh(self, context, name, file, basename, MatTexNames, MatTexFiles)
                         if ".mesh" in name and "Trans" in directory:
-                            Trans(basename, name, file)
+                            Trans(basename, context, name, file)
                         if "TransAnim" in directory:
                             TransAnim(context, file)
                         elif "PropAnim" in directory:
@@ -285,7 +285,7 @@ class ImportMilo(Operator, ImportHelper):
                         if ".mesh" in name and "Mesh" in directory:
                             Mesh(self, context, name, file, basename, MatTexNames, MatTexFiles)
                         if ".mesh" in name and "Trans" in directory:
-                            Trans(basename, name, file)
+                            Trans(basename, context, name, file)
                         if "TransAnim" in directory:
                             TransAnim(context, file)
 
