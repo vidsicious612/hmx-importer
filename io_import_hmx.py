@@ -2057,32 +2057,21 @@ def DC3Trans(self, file, BoneNames, BoneFiles):
         bpy.ops.object.mode_set(mode='OBJECT')
         armature_obj.rotation_euler = (0, 0, math.radians(-180))
     
-def Trans(basename, filename, file):        
+def Trans(basename, context, filename, file):        
     f = io.BytesIO(file)
-    # Hacky way to guess endian
-    Versions = [5, 8, 9]
-    LittleEndian = False
-    BigEndian = False
-    Version = struct.unpack('I', f.read(4))[0]
-    if Version not in Versions:
-        BigEndian = True
-        f.seek(-4, 1)
-        Version = struct.unpack('>I', f.read(4))[0]
-    elif Version in Versions:
-        LittleEndian = True
-    if Version == 8 and LittleEndian == True:
+    if context.scene.games == 'OPTION_A':
         f.seek(8)
         LocalUpper = struct.unpack('9f', f.read(36))
         LocalPos = struct.unpack('3f', f.read(12))
         WorldUpper = struct.unpack('9f', f.read(36))
         WorldPos = struct.unpack('3f', f.read(12))
-    if Version == 9 and LittleEndian == True and basename.endswith('.milo_xbox'):
+    if context.scene.games == 'OPTION_B' and basename.endswith('.milo_xbox'):
         f.seek(17)
         LocalUpper = struct.unpack('9f', f.read(36))
         LocalPos = struct.unpack('3f', f.read(12))
         WorldUpper = struct.unpack('9f', f.read(36))
         WorldPos = struct.unpack('3f', f.read(12))
-    if Version == 9 and basename.endswith('.milo_ps2'):
+    if context.scene.games == 'OPTION_B' and basename.endswith('.milo_ps2'):
         f.seek(13)
         LocalUpper = struct.unpack('9f', f.read(36))
         LocalPos = struct.unpack('3f', f.read(12))
@@ -2094,21 +2083,21 @@ def Trans(basename, filename, file):
         LocalPos = struct.unpack('>3f', f.read(12))
         WorldUpper = struct.unpack('>9f', f.read(36))
         WorldPos = struct.unpack('>3f', f.read(12))
-    if Version == 8 and LittleEndian == True:
+    if context.scene.games == 'OPTION_A':
         TransCount = l_int(f)
         for x in range(TransCount):
             TransObject = l_numstring(f)
         f.seek(4, 1)
-    if Version == 9 and LittleEndian == True and basename.endswith('.milo_ps2'):
+    if context.scene.games == 'OPTION_B' and basename.endswith('.milo_ps2'):
         f.seek(113)
     else:
         f.seek(117)
-    if Version == 8 or 9 and LittleEndian == True:
+    if context.scene.games == 'OPTION_A' or context.scene.games == 'OPTION_B':
         Target = l_numstring(f)
     else:
         Target = b_numstring(f)
     f.seek(1, 1)
-    if Version == 8 or 9 and LittleEndian == True:
+    if context.scene.games == 'OPTION_A' or context.scene.games == 'OPTION_B':
         ParentName = l_numstring(f)
     else:
         ParentName = b_numstring(f)
