@@ -234,23 +234,11 @@ class ImportMilo(Operator, ImportHelper):
                     if self.venue_setting:
                         f.seek(0)
                         rest_file = f.read()
-                        sequence = "_geom".encode('utf-8')
+                        sequence = "_geom.milo".encode('utf-8')
                         offset = rest_file.find(sequence)
                         f.seek(offset)
-                        f.seek(5, 1)
-                        print(f.tell())
-                        # Sullivan has something weird
-                        name = f.read(6)
-                        if name == b'\x30\x31\x2E\x65\x6E\x76':
-                            sec_offset = rest_file.find(sequence, offset + len(sequence))
-                            f.seek(sec_offset)
-                            f.seek(5, 1)
-                            f.seek(9, 1)
-                            print(f.tell())
-                        else:
-                            f.seek(8, 1)
-                            print(f.tell())
-                            print(f.tell())
+                        f.seek(10, 1)
+                        f.seek(4, 1)
                         geomdirs = []
                         geomnames = []
                         DirType = b_numstring(f)
@@ -2312,7 +2300,6 @@ def CharClipSamples(self, file):
         Weight = b_float(f)
     for x in range(7):
         Count = b_int(f)
-    # Koby is a dumb fuck
     f.seek(4, 1)
     NumSamples = b_int(f)
     NumFrames = b_int(f)
