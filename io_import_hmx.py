@@ -1541,32 +1541,54 @@ def Mesh(self, context, filename, file, basename, MatTexNames, MatTexFiles):
         if basename.endswith('.milo_wii'):
             f.seek(1, 1)
         else:
-            f.seek(9, 1)
+            f.seek(1, 1)
+            VertSize = b_int(f)
+            if VertSize == 40:
+                f.seek(4, 1)
+            else:
+                f.seek(-4, 1)
         Verts = []
         Normals = []
         Weights = []
         UVs = []
         Indices = []
         for i in range(VertCount):
-            x, y, z = struct.unpack('>fff', f.read(12))
+            if basename.endswith('.milo_ps3') and VertSize != 40:
+                x, y, z = struct.unpack('>fff', f.read(12))
+                f.seek(16, 1)
+                nx, ny, nz = struct.unpack('>fff', f.read(12))
+                u, v = struct.unpack('>ff', f.read(8))
+                f.seek(40, 1)
+                Verts.append((x, y, z))
+                Normals.append((nx, ny, nz))
+                UVs.append((u, v))
+            if basename.endswith('.milo_xbox') and VertSize != 40:
+                x, y, z = struct.unpack('>fff', f.read(12))
+                f.seek(16, 1)
+                nx, ny, nz = struct.unpack('>fff', f.read(12))
+                u, v = struct.unpack('>ff', f.read(8))
+                f.seek(36, 1)
+                Verts.append((x, y, z))
+                Normals.append((nx, ny, nz))
+                UVs.append((u, v))                
             if basename.endswith('.milo_wii'):
                 nx, ny, nz = struct.unpack('>fff', f.read(12))
                 w1, w2, w3, w4 = struct.unpack('>ffff', f.read(16))
                 u, v = struct.unpack('>ff', f.read(8))
                 b1, b2, b3, b4 = struct.unpack('>HHHH', f.read(8))
                 f.seek(16, 1)
-            elif basename.endswith('.milo_xbox'):
-                u, v = struct.unpack('>ee', f.read(4))
-                f.seek(20, 1)
-            elif basename.endswith('.milo_ps3'):
+            if basename.endswith('.milo_ps3') and VertSize == 40:
+                x, y, z = struct.unpack('>fff', f.read(12))
                 u, v = struct.unpack('>ee', f.read(4))
                 f.seek(24, 1)
-            Verts.append((x, y, z))
-            if basename.endswith('.milo_wii'):
-                Normals.append((nx, ny, nz))
-                Weights.append((w1, w2, w3, w4))
-                Indices.append((b1, b2, b3, b4))
-            UVs.append((u, v))
+                Verts.append((x, y, z))
+                UVs.append((u, v))
+            if basename.endswith('.milo_xbox') and VertSize == 40:
+                x, y, z = struct.unpack('>fff', f.read(12))
+                u, v = struct.unpack('>ee', f.read(4))
+                f.seek(20, 1)
+                Verts.append((x, y, z))
+                UVs.append((u, v))
         FaceCount = b_int(f)
         Faces = []
         for x in range(FaceCount):
