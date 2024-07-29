@@ -153,11 +153,10 @@ class ImportMilo(Operator, ImportHelper):
                         if ".mat" in name and "Mat" in directory:
                             MatTexNames.append(name)
                             MatTexFiles.append(file)
-                        if "Tex" in directory:
-                            if not "TexBlend" in directory:
-                                MatTexNames.append(name)
-                                MatTexFiles.append(file)
+                        if "Tex" in directory:                                    
                             Tex(context, basename, self, name, file)
+                            MatTexNames.append(name)
+                            MatTexFiles.append(file)
                         if ".mesh" in name and "Mesh" in directory:
                             Mesh(self, context, name, file, basename, MatTexNames, MatTexFiles)
                         if "bone" in name and "Mesh" in directory:
@@ -181,11 +180,10 @@ class ImportMilo(Operator, ImportHelper):
                         if ".mat" in name and "Mat" in directory:
                             MatTexNames.append(name)
                             MatTexFiles.append(file)
-                        if "Tex" in directory:
-                            if not "TexBlend" in directory:
-                                MatTexNames.append(name)
-                                MatTexFiles.append(file)
+                        if "Tex" in directory:                                    
                             Tex(context, basename, self, name, file)
+                            MatTexNames.append(name)
+                            MatTexFiles.append(file)
                         if ".mesh" in name and "Mesh" in directory:
                             Mesh(self, context, name, file, basename, MatTexNames, MatTexFiles)
                         if ".mesh" in name and "Trans" in directory:
@@ -209,11 +207,10 @@ class ImportMilo(Operator, ImportHelper):
                         if ".mat" in name and "Mat" in directory:
                             MatTexNames.append(name)
                             MatTexFiles.append(file)
-                        if "Tex" in directory:
-                            if not "TexBlend" in directory:
-                                MatTexNames.append(name)
-                                MatTexFiles.append(file)
+                        if "Tex" in directory:                                    
                             Tex(context, basename, self, name, file)
+                            MatTexNames.append(name)
+                            MatTexFiles.append(file)
                         if ".mesh" in name and "Mesh" in directory:
                             Mesh(self, context, name, file, basename, MatTexNames, MatTexFiles)
                         if ".mesh" in name and "Trans" in directory:
@@ -241,6 +238,7 @@ class ImportMilo(Operator, ImportHelper):
                         f.seek(4, 1)
                         geomdirs = []
                         geomnames = []
+                        geomfiles = []
                         DirType = b_numstring(f)
                         DirName = b_numstring(f)
                         geomdirs.append(DirType)
@@ -252,35 +250,30 @@ class ImportMilo(Operator, ImportHelper):
                             geomnames.append(b_numstring(f))
                         rest = f.read()
                         files = rest.split(b'\xAD\xDE\xAD\xDE')
-                        files = files[:len(geomnames)]
                         for directory, name, file in zip(geomdirs, geomnames, files):
                             if ".mat" in name and "Mat" in directory:
                                 MatTexNames.append(name)
                                 MatTexFiles.append(file)
-                            if "Tex" in directory:
-                                if not "TexBlend" in directory:
-                                    Tex(context, basename, self, name, file)
-                                    MatTexNames.append(name)
-                                    MatTexFiles.append(file)
+                            if "Tex" in directory:                                    
                                 Tex(context, basename, self, name, file)
+                                MatTexNames.append(name)
+                                MatTexFiles.append(file)
                             if ".mesh" in name and "Mesh" in directory:
                                 Mesh(self, context, name, file, basename, MatTexNames, MatTexFiles)                            
-                        if "TransAnim" in directory:
-                            TransAnim(context, file)
-                        elif "PropAnim" in directory:
-                            PropAnim(context, file)
+                            if "TransAnim" in directory:
+                                TransAnim(context, file)
+                            elif "PropAnim" in directory:
+                                PropAnim(context, file)
                     rest_file = f.read()
                     files = rest_file.split(b'\xAD\xDE\xAD\xDE')
                     for directory, name, file in zip(dirs, filenames, files):
                         if ".mat" in name and "Mat" in directory:
                             MatTexNames.append(name)
                             MatTexFiles.append(file)
-                        if "Tex" in directory:
-                            if not "TexBlend" in directory:
-                                Tex(context, basename, self, name, file)
-                                MatTexNames.append(name)
-                                MatTexFiles.append(file)
+                        if "Tex" in directory:                                    
                             Tex(context, basename, self, name, file)
+                            MatTexNames.append(name)
+                            MatTexFiles.append(file)
                         if ".mesh" in name and "Mesh" in directory:
                             Mesh(self, context, name, file, basename, MatTexNames, MatTexFiles)
                         if ".mesh" in name and "Trans" in directory:
@@ -308,11 +301,10 @@ class ImportMilo(Operator, ImportHelper):
                         if ".mat" in name and "Mat" in directory:
                             MatTexNames.append(name)
                             MatTexFiles.append(file)
-                        if "Tex" in directory:
-                            if not "TexBlend" in directory:
-                                Tex(context, basename, self, name, file)
-                                MatTexNames.append(name)
-                                MatTexFiles.append(file)
+                        if "Tex" in directory:                                    
+                            Tex(context, basename, self, name, file)
+                            MatTexNames.append(name)
+                            MatTexFiles.append(file)
                         if ".mesh" in name and "Mesh" in directory:
                             Mesh(self, context, name, file, basename, MatTexNames, MatTexFiles)
                         if ".mesh" in name and "Trans" in directory:
@@ -1706,7 +1698,8 @@ def Mesh(self, context, filename, file, basename, MatTexNames, MatTexFiles):
                         g = b_float(f)
                         b = b_float(f)
                         a = b_float(f)
-                        mat.diffuse_color = (r, g, b, a)                            
+                        mat.diffuse_color = (r, g, b, a)                                    
+    
 def DC3Tex(self, file):
     try:
         directory = os.path.dirname(self.filepath)
@@ -2330,8 +2323,9 @@ def CharClipSamples(self, file):
         Frame = b_float(f)
         Frames.append(Frame)
     Armature = bpy.data.objects.get('Armature')
-    frame_index = 0
     for x in range(NumSamples):
+        frame_index = int(x / NumSamples * NumFrames)
+        bpy.context.scene.frame_set(int(Frames[frame_index]))
         for Name in BoneNames:
             if "pos" in Name:
                 x, y, z = struct.unpack('>hhh', f.read(6))
@@ -2343,10 +2337,9 @@ def CharClipSamples(self, file):
                 z_float = z_float * 1345
                 Name = Name.replace('.pos', '.mesh')
                 Bone = Armature.pose.bones.get(Name)
-                if Bone and frame_index < len(Frames):
-                    Bone.location = (x_float, y_float, z_float)
-                    Bone.keyframe_insert("location", frame=Frames[frame_index])
-                frame_index += 1
+                if Bone:
+                    Bone.location = (x_float, -z_float, y_float)
+                    Bone.keyframe_insert("location")
             elif "quat" in Name:
                 x, y, z, w = struct.unpack('>hhhh', f.read(8))
                 x_float = x / 32767
@@ -2355,11 +2348,10 @@ def CharClipSamples(self, file):
                 w_float = w / 32767
                 Name = Name.replace('.quat', '.mesh')
                 Bone = Armature.pose.bones.get(Name)
-                if Bone and frame_index < len(Frames):
+                if Bone:
                     Bone.rotation_mode = 'QUATERNION'
                     Bone.rotation_quaternion = (w_float, x_float, -z_float, y_float)
-                    Bone.keyframe_insert("rotation_quaternion", frame=Frames[frame_index])
-                frame_index += 1
+                    Bone.keyframe_insert("rotation_quaternion")
             elif "rotz" in Name:
                 rotz = f.read(2)
 
