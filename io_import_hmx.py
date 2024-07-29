@@ -2322,6 +2322,7 @@ def CharClipSamples(self, file):
     for x in range(NumFrames):
         Frame = b_float(f)
         Frames.append(Frame)
+    print(NumSamples)
     Armature = bpy.data.objects.get('Armature')
     for x in range(NumSamples):
         frame_index = int(x / NumSamples * NumFrames)
@@ -2329,12 +2330,9 @@ def CharClipSamples(self, file):
         for Name in BoneNames:
             if "pos" in Name:
                 x, y, z = struct.unpack('>hhh', f.read(6))
-                x_float = x / 32767
-                y_float = y / 32767
-                z_float = z / 32767
-                x_float = x_float * 1345
-                y_float = y_float * 1345
-                z_float = z_float * 1345
+                x_float = x / 32767 * 1345
+                y_float = y / 32767 * 1345
+                z_float = z / 32767 * 1345
                 Name = Name.replace('.pos', '.mesh')
                 Bone = Armature.pose.bones.get(Name)
                 if Bone:
@@ -2354,6 +2352,8 @@ def CharClipSamples(self, file):
                     Bone.keyframe_insert("rotation_quaternion")
             elif "rotz" in Name:
                 rotz = f.read(2)
+    Armature.location = (-3, 140, 0)
+    Armature.rotation_euler = ((math.radians(-90)), 0, 0)
 
 def menu_func_import(self, context):
     self.layout.operator(ImportMilo.bl_idname, text="Milo Importer")
