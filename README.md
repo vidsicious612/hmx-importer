@@ -42,3 +42,5 @@ To make sure the mesh doesn't get distorted when an armature modifier is applied
 Then try it again.
 
 And if there's any game/platform you want me to add support for, do let me know.
+
+Read endian_guide.txt on how to properly use the little endian setting.
