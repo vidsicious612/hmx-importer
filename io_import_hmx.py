@@ -58,7 +58,7 @@ class ImportMilo(Operator, ImportHelper):
     filename_ext = ".milo_ps3"
 
     filter_glob: StringProperty(
-        default="*.milo_ps3;*.milo_xbox;*.milo_wii;*.rnd_ps2;*.milo_ps2;*.rnd;*.dds",
+        default="*.milo_ps3;*.milo_xbox;*.milo_wii;*.rnd_ps2;*.milo_ps2;*.rnd;*.dds;*.ccs",
         options={'HIDDEN'},
     )
 
@@ -95,7 +95,71 @@ class ImportMilo(Operator, ImportHelper):
         layout.prop(self, "little_endian_setting")
     def execute(self, context):
         with open(self.filepath, 'rb') as f:
-            if self.filepath.endswith('.dds'):
+            if self.filepath.endswith('.ccs'):
+                with open(self.filepath, 'rb') as f:
+                    Version = b_int(f)
+                    f.seek(12)
+                    AnimType = b_numstring(f)
+                    if Version == 15:
+                        f.seek(46, 1)
+                        NodeCount = b_int(f)
+                        for x in range(NodeCount):
+                            Name = b_numstring(f)
+                            FloatCount = b_int(f)
+                            for x in range(FloatCount):
+                                Frame = b_float(f)
+                                Weight = b_float(f)
+                        f.seek(8, 1)
+                    elif Version == 16:
+                        f.seek(59, 1)
+                    BoneCount = b_int(f)
+                    BoneNames = []
+                    for x in range(BoneCount):
+                        BoneName = b_numstring(f)
+                        BoneNames.append(BoneName)
+                        Weight = b_float(f)
+                    for x in range(7):
+                        Count = b_int(f)
+                    f.seek(4, 1)
+                    NumSamples = b_int(f)
+                    NumFrames = b_int(f)
+                    Frames = []
+                    for x in range(NumFrames):
+                        Frame = b_float(f)
+                        Frames.append(Frame)
+                    print(NumSamples)
+                    Armature = bpy.data.objects.get('Armature')
+                    for i in range(NumSamples):
+                        frame_index = int(i / NumSamples * NumFrames)
+                        bpy.context.scene.frame_set(int(Frames[frame_index]))
+                        for Name in BoneNames:
+                            if "pos" in Name:
+                                x, y, z = struct.unpack('>hhh', f.read(6))
+                                x_float = x / 32767 * 1345
+                                y_float = y / 32767 * 1345
+                                z_float = z / 32767 * 1345
+                                Name = Name.replace('.pos', '.mesh')
+                                Bone = Armature.pose.bones.get(Name)
+                                if Bone:
+                                    Bone.location = (x_float, -z_float, y_float)
+                                    Bone.keyframe_insert("location")
+                            elif "quat" in Name:
+                                x, y, z, w = struct.unpack('>hhhh', f.read(8))
+                                x_float = x / 32767
+                                y_float = y / 32767
+                                z_float = z / 32767
+                                w_float = w / 32767
+                                Name = Name.replace('.quat', '.mesh')
+                                Bone = Armature.pose.bones.get(Name)
+                                if Bone:
+                                    Bone.rotation_mode = 'QUATERNION'
+                                    Bone.rotation_quaternion = (w_float, x_float, -z_float, y_float)
+                                    Bone.keyframe_insert("rotation_quaternion")
+                            elif "rotz" in Name:
+                                rotz = f.read(2)
+                    Armature.location = (-3, 140, 0)
+                    Armature.rotation_euler = ((math.radians(-90)), 0, 0)
+            elif self.filepath.endswith('.dds'):
                 obj = bpy.context.active_object
                 mat = obj.data.materials[0]
                 image = bpy.data.images.load(self.filepath)
@@ -162,9 +226,9 @@ class ImportMilo(Operator, ImportHelper):
                         if ".mesh" in name and "Trans" in directory:
                             Trans(basename, self, name, file)
                         if "TransAnim" in directory:
-                            TransAnim(context, file)
+                            TransAnim(self, file)
                         elif "PropAnim" in directory:
-                            PropAnim(context, file)
+                            PropAnim(self, file)
                 else:
                     Version = b_int(f)
                     DirType = b_numstring(f)
@@ -214,9 +278,9 @@ class ImportMilo(Operator, ImportHelper):
                             if ".mesh" in name and "Trans" in directory:
                                 Trans(basename, self, name, file)
                             if "TransAnim" in directory:
-                                TransAnim(context, file)
+                                TransAnim(self, file)
                             elif "PropAnim" in directory:
-                                PropAnim(context, file)
+                                PropAnim(self, file)
                     if Version < 32:
                         rest_file = f.read()
                         files = rest_file.split(b'\xAD\xDE\xAD\xDE')
@@ -233,9 +297,9 @@ class ImportMilo(Operator, ImportHelper):
                             if ".mesh" in name and "Trans" in directory:
                                 Trans(basename, self, name, file)
                             if "TransAnim" in directory:
-                                TransAnim(context, file)
+                                TransAnim(self, file)
                             elif "PropAnim" in directory:
-                                PropAnim(context, file)
+                                PropAnim(self, file)
 
         return {'FINISHED'}                
 
@@ -596,7 +660,7 @@ def Mesh(self, context, filename, file, basename, MatTexNames, MatTexFiles):
         MeshName = b_numstring(f)
         f.seek(9, 1)
         VertCount = b_int(f)
-        if (Version > 34 and basename.endswith('.milo_ps3')) or basename.endswith('.milo_xbox'):
+        if Version > 34:
             Platform = struct.unpack('>B', f.read(1))[0]
             if Platform == 1:
                 f.seek(8, 1)
@@ -606,21 +670,9 @@ def Mesh(self, context, filename, file, basename, MatTexNames, MatTexFiles):
         UVs = []
         Indices = []
         for i in range(VertCount):
-            if Version == 34:
+            if (basename.endswith('.milo_ps3') or basename.endswith('.milo_xbox')) and (Version == 34 or (Version == 36 and Platform == 0)):
                 x, y, z, w = struct.unpack('>ffff', f.read(16))
-                Verts.append((x, y, z))
-                nx, ny, nz, nw = struct.unpack('>ffff', f.read(16))
-                Normals.append((nx, ny, nz))
-                w1, w2, w3, w4 = struct.unpack('>ffff', f.read(16))
-                Weights.append((w1, w2, w3, w4))
-                u, v = struct.unpack('>ff', f.read(8))
-                UVs.append((u, v))
-                b1, b2, b3, b4 = struct.unpack('>HHHH', f.read(8))
-                Indices.append((b1, b2, b3, b4))
-                f.seek(16, 1)
-            if Version == 36 and Platform == 0 and (basename.endswith('.milo_ps3') or basename.endswith('.milo_xbox')):
-                x, y, z, w = struct.unpack('>ffff', f.read(16))
-                Verts.append((x, y, z))
+                Verts.append((x, y, z))                
                 nx, ny, nz, nw = struct.unpack('>ffff', f.read(16))
                 Normals.append((nx, ny, nz))
                 w1, w2, w3, w4 = struct.unpack('>ffff', f.read(16))
@@ -650,8 +702,8 @@ def Mesh(self, context, filename, file, basename, MatTexNames, MatTexFiles):
                 normals = b_int(f)
                 Normals.append(normals)
                 f.seek(4, 1)
-                weights = b_int(f)
-                Weights.append(weights)
+                w1, w2, w3, w4 = struct.unpack('>BBBB', f.read(4))
+                Weights.append((w1 / 255.0, w2 / 255.0, w3 / 255.0, w4 / 255.0))
                 b1, b2, b3, b4 = struct.unpack('>HHHH', f.read(8))
                 Indices.append((b1, b2, b3, b4))
             elif (Version == 36 or Version == 37) and basename.endswith('.milo_xbox'):
@@ -664,7 +716,7 @@ def Mesh(self, context, filename, file, basename, MatTexNames, MatTexFiles):
                 Normals.append(normals)
                 f.seek(4, 1)
                 weights = b_int(f)
-                Weights.append(weights)
+                Weights.append(Weights)
                 b1, b2, b3, b4 = struct.unpack('>BBBB', f.read(4))
                 Indices.append((b1, b2, b3, b4))
             if Version == 38 and basename.endswith('.milo_ps3'):
@@ -735,19 +787,6 @@ def Mesh(self, context, filename, file, basename, MatTexNames, MatTexFiles):
                 w = max(w_bits / float(1), -1.0)
                 Normals[index] = (x, y, z)
                 index += 1
-        if (Version == 36 or Version == 37) and not basename.endswith('.milo_wii'):
-            index = 0
-            for Weight in Weights:
-                w_bits = (Weight >> 30) & 3
-                z_bits = (Weight >> 20) & 1023
-                y_bits = (Weight >> 10) & 1023
-                x_bits = Weight & 1023
-                x = float(x_bits) / float(1023)
-                y = float(y_bits) / float(1023)
-                z = float(z_bits) / float(1023)
-                w = float(w_bits) / float(3)
-                Weights[index] = (x, y, z, w)
-                index += 1
         mesh = bpy.data.meshes.new(name=filename)
         obj = bpy.data.objects.new(filename, mesh)
         bpy.context.scene.collection.objects.link(obj)
@@ -771,10 +810,15 @@ def Mesh(self, context, filename, file, basename, MatTexNames, MatTexFiles):
         if len(Normals) > 0:
             mesh.normals_split_custom_set_from_vertices(Normals)
         mesh.update()
-        bpy.ops.object.select_all(action='DESELECT')
-        obj.select_set(True)
-        bpy.context.view_layer.objects.active = obj
-        try:
+        if BoneCount == 1:
+            index = 0
+            for ID in Indices:
+                Indices[index] = (0, 0, 0, 0)
+                index += 1
+        if BoneCount != 0:
+            bpy.ops.object.select_all(action='DESELECT')
+            obj.select_set(True)
+            bpy.context.view_layer.objects.active = obj
             for i, vertex in enumerate(mesh.vertices):
                 group_names = [BoneNames[idx] for idx in Indices[i]]
                 group_weights = Weights[i]                            
@@ -782,13 +826,12 @@ def Mesh(self, context, filename, file, basename, MatTexNames, MatTexFiles):
                     if group_name not in obj.vertex_groups:
                         obj.vertex_groups.new(name=group_name)
                     group_index = obj.vertex_groups[group_name].index
-                    obj.vertex_groups[group_index].add([vertex.index], weight, 'REPLACE')
+                    obj.vertex_groups[group_index].add([vertex.index], weight, 'ADD')
             mesh.update()
             print("Bone weights assigned to:", obj.name)                
-        except IndexError:
-            print("Invalid weights")
-        obj.select_set(False)                                   
+            obj.select_set(False)        
         if len(MatName) > 0:
+            bpy.context.view_layer.objects.active = obj
             mat = bpy.data.materials.get(MatName)
             if mat is None:
                 mat = bpy.data.materials.new(name=MatName)
@@ -811,6 +854,12 @@ def Mesh(self, context, filename, file, basename, MatTexNames, MatTexFiles):
                     mat = bpy.data.materials.get(name)
                     if mat:
                         f = io.BytesIO(file)
+                        f.seek(21)
+                        r = b_float(f)
+                        g = b_float(f)
+                        b = b_float(f)
+                        a = b_float(f)
+                        mat.diffuse_color = (r, g, b, a)
                         f.seek(105)
                         TexName = b_numstring(f)
                         tex = bpy.data.textures.get(TexName)
@@ -823,13 +872,7 @@ def Mesh(self, context, filename, file, basename, MatTexNames, MatTexFiles):
                                 tex_node.image = tex.image
                                 links = mat.node_tree.links
                                 links.new(bsdf.inputs['Base Color'], tex_node.outputs['Color'])            
-                        else:
-                            f.seek(21)
-                            r = l_float(f)
-                            g = l_float(f)
-                            b = l_float(f)
-                            a = l_float(f)
-                            mat.diffuse_color = (r, g, b, a)
+
                             
     
 def Trans(basename, self, filename, file):        
@@ -913,71 +956,73 @@ def Trans(basename, self, filename, file):
         pose_bone.location = LocalPos  
     bpy.ops.object.mode_set(mode='OBJECT')
         
-def TransAnim(context, file):
+def TransAnim(self, file):
     f = io.BytesIO(file)
     bpy.context.scene.render.fps = 30
-    if context.scene.games == 'OPTION_A':
-        f.seek(8)
-        AnimEntryCount = l_int(f)
-        for x in range(AnimEntryCount):
-            Name = l_numstring(f)
-            F1 = l_float(f)
-            F2 = l_float(f)
-        AnimCount = l_int(f)
-        f.seek(25, 1)
-        TransObject = l_numstring(f)
-        obj = bpy.data.objects.get(TransObject)
-        if obj is None:
-            return
-        RotKeysCount = l_int(f)
-        for x in range(RotKeysCount):
-            Quat = struct.unpack('ffff', f.read(16))
-            Pos = l_float(f)
-            obj.rotation_mode = 'QUATERNION'
-            obj.rotation_quaternion = (Quat[3], Quat[0], Quat[1], Quat[2])
-            obj.keyframe_insert("rotation_quaternion", frame=Pos)
-        TransKeysCount = l_int(f)
-        for x in range(TransKeysCount):
-            Location = struct.unpack('fff', f.read(12))
-            Pos = l_float(f)
-            obj.location = Location
-            obj.keyframe_insert("location", frame=Pos)
-        TransAnimOwner = l_numstring(f)
-        f.seek(2, 1)
-        ScaleKeysCount = l_int(f)
-        for x in range(ScaleKeysCount):
-            Scale = struct.unpack('fff', f.read(12))
-            Pos = l_float(f)
-            obj.scale = Scale
-            obj.keyframe_insert("scale", frame=Pos)
-    elif context.scene.games == 'OPTION_B':
-        f.seek(29)
-        TransObject = l_numstring(f)
-        obj = bpy.data.objects.get(TransObject)
-        if obj is None:
-            return
-        RotKeysCount = l_int(f)
-        for x in range(RotKeysCount):
-            Quat = struct.unpack('ffff', f.read(16))
-            Pos = l_float(f)
-            obj.rotation_mode = 'QUATERNION'
-            obj.rotation_quaternion = (Quat[3], Quat[0], Quat[1], Quat[2])
-            obj.keyframe_insert("rotation_quaternion", frame=Pos)
-        TransKeysCount = l_int(f)
-        for x in range(TransKeysCount):
-            Location = struct.unpack('fff', f.read(12))
-            Pos = l_float(f)
-            obj.location = Location
-            obj.keyframe_insert("location", frame=Pos)
-        TransAnimOwner = l_numstring(f)
-        f.seek(2, 1)
-        ScaleKeysCount = l_int(f)
-        for x in range(ScaleKeysCount):
-            Scale = struct.unpack('fff', f.read(12))
-            Pos = l_float(f)
-            obj.scale = Scale
-            obj.keyframe_insert("scale", frame=Pos)
-    elif context.scene.games == 'OPTION_E' or 'OPTION_G':
+    if self.little_endian_setting:
+        Version = l_int(f)
+        if Version == 4:
+            f.seek(8)
+            AnimEntryCount = l_int(f)
+            for x in range(AnimEntryCount):
+                Name = l_numstring(f)
+                F1 = l_float(f)
+                F2 = l_float(f)
+            AnimCount = l_int(f)
+            f.seek(25, 1)
+            TransObject = l_numstring(f)
+            obj = bpy.data.objects.get(TransObject)
+            if obj is None:
+                return
+            RotKeysCount = l_int(f)
+            for x in range(RotKeysCount):
+                Quat = struct.unpack('ffff', f.read(16))
+                Pos = l_float(f)
+                obj.rotation_mode = 'QUATERNION'
+                obj.rotation_quaternion = (Quat[3], Quat[0], Quat[1], Quat[2])
+                obj.keyframe_insert("rotation_quaternion", frame=Pos)
+            TransKeysCount = l_int(f)
+            for x in range(TransKeysCount):
+                Location = struct.unpack('fff', f.read(12))
+                Pos = l_float(f)
+                obj.location = Location
+                obj.keyframe_insert("location", frame=Pos)
+            TransAnimOwner = l_numstring(f)
+            f.seek(2, 1)
+            ScaleKeysCount = l_int(f)
+            for x in range(ScaleKeysCount):
+                Scale = struct.unpack('fff', f.read(12))
+                Pos = l_float(f)
+                obj.scale = Scale
+                obj.keyframe_insert("scale", frame=Pos)
+        elif Version == 6:
+            f.seek(29)
+            TransObject = l_numstring(f)
+            obj = bpy.data.objects.get(TransObject)
+            if obj is None:
+                return
+            RotKeysCount = l_int(f)
+            for x in range(RotKeysCount):
+                Quat = struct.unpack('ffff', f.read(16))
+                Pos = l_float(f)
+                obj.rotation_mode = 'QUATERNION'
+                obj.rotation_quaternion = (Quat[3], Quat[0], Quat[1], Quat[2])
+                obj.keyframe_insert("rotation_quaternion", frame=Pos)
+            TransKeysCount = l_int(f)
+            for x in range(TransKeysCount):
+                Location = struct.unpack('fff', f.read(12))
+                Pos = l_float(f)
+                obj.location = Location
+                obj.keyframe_insert("location", frame=Pos)
+            TransAnimOwner = l_numstring(f)
+            f.seek(2, 1)
+            ScaleKeysCount = l_int(f)
+            for x in range(ScaleKeysCount):
+                Scale = struct.unpack('fff', f.read(12))
+                Pos = l_float(f)
+                obj.scale = Scale
+                obj.keyframe_insert("scale", frame=Pos)
+    else:
         f.seek(29)
         TransObject = b_numstring(f)
         obj = bpy.data.objects.get(TransObject)
@@ -1005,10 +1050,10 @@ def TransAnim(context, file):
             obj.scale = Scale
             obj.keyframe_insert("scale", frame=Pos)
         
-def PropAnim(context, file):
+def PropAnim(self, file):
     f = io.BytesIO(file)
-    # Hacky way to guess endian
-    if context.scene.games == 'OPTION_E' or 'OPTION_G':
+    Version = b_int(f)
+    if Version == 11:
         f.seek(29)
         PropKeysCount = b_int(f)
         f.seek(8, 1)
