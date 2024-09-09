@@ -3,7 +3,7 @@ bl_info = {
     "description": "A script to import milo/rnd files from most HMX games.",
     "author": "alliwantisyou3471, neotame4",
     "version": (1, 0),
-    "blender": (4, 0, 0),
+    "blender": (3, 6, 0),
     "location": "File > Import",
     "warning": "", # used for warning icon and text in addons panel
     "doc_url": "",
