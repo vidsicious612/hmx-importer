@@ -1,9 +1,9 @@
 bl_info = {
     "name": "HMX Importer",
     "description": "A script to import milo/rnd files from most HMX games.",
-    "author": "alliwantisyou3471",
+    "author": "alliwantisyou3471, neotame4",
     "version": (1, 0),
-    "blender": (3, 0, 0),
+    "blender": (4, 0, 0),
     "location": "File > Import",
     "warning": "", # used for warning icon and text in addons panel
     "doc_url": "",
@@ -226,7 +226,7 @@ class ImportMilo(Operator, ImportHelper):
                         if ".mesh" in name and "Trans" in directory:
                             Trans(basename, self, name, file)
                         if "TransAnim" in directory:
-                            TransAnim(self, file)
+                            TransAnim(self, name, file)
                         elif "PropAnim" in directory:
                             PropAnim(self, file)
                 else:
@@ -278,7 +278,7 @@ class ImportMilo(Operator, ImportHelper):
                             if ".mesh" in name and "Trans" in directory:
                                 Trans(basename, self, name, file)
                             if "TransAnim" in directory:
-                                TransAnim(self, file)
+                                TransAnim(self, name, file)
                             elif "PropAnim" in directory:
                                 PropAnim(self, file)
                     if Version < 32:
@@ -297,7 +297,7 @@ class ImportMilo(Operator, ImportHelper):
                             if ".mesh" in name and "Trans" in directory:
                                 Trans(basename, self, name, file)
                             if "TransAnim" in directory:
-                                TransAnim(self, file)
+                                TransAnim(self, name, file)
                             elif "PropAnim" in directory:
                                 PropAnim(self, file)
 
@@ -556,7 +556,7 @@ def Mesh(self, context, filename, file, basename, MatTexNames, MatTexFiles):
             (0.0, 0.0, 0.0, 1.0),
         ))
         mesh.from_pydata(Verts, [], Faces)
-        mesh.use_auto_smooth = True
+       # mesh.use_auto_smooth = True
         uv_layer = mesh.uv_layers.new(name="UVMap")
         for face in mesh.polygons:
             face.use_smooth = True
@@ -579,11 +579,14 @@ def Mesh(self, context, filename, file, basename, MatTexNames, MatTexFiles):
                     if group_name not in obj.vertex_groups:
                         obj.vertex_groups.new(name=group_name)
                     group_index = obj.vertex_groups[group_name].index
-                    obj.vertex_groups[group_index].add([vertex.index], weight, 'REPLACE')
+                    obj.vertex_groups[group_index].add([vertex.index], wx, 'ADD')
+                    obj.vertex_groups[group_index].add([vertex.index], wy, 'REPLACE')
+                    obj.vertex_groups[group_index].add([vertex.index], wz, 'ADD')
+                   # obj.vertex_groups[group_index].add([vertex.index], ww, 'ADD')
             mesh.update()
             print("Bone weights assigned to:", obj.name)                
         except IndexError:
-            print("Invalid weights")
+            print("Indices don't match up!")
         obj.select_set(False)                                   
         if len(MatName) > 0:
             mat = bpy.data.materials.get(MatName)
@@ -715,8 +718,20 @@ def Mesh(self, context, filename, file, basename, MatTexNames, MatTexFiles):
                 normals = b_int(f)
                 Normals.append(normals)
                 f.seek(4, 1)
-                weights = b_int(f)
-                Weights.append(Weights)
+                weightv = b_int(f)
+               # w_bits = (weightv >> 30) & 3
+               # z_bits = (weightv >> 20) & 1023
+               # y_bits = (weightv >> 10) & 1023
+               # x_bits = weightv & 1023
+                wx = float(weightv & 1023) / float(1023)
+                wy = float((weightv >> 10) & 1023) / float(1023)
+                wz = float((weightv >> 20) & 1023) / float(1023)
+                ww = float((weightv >> 30) & 3) / float(3)
+                Weights.append((ww, wz, wx, wy))
+               # Weights.append((wx))
+               # Weights.append((wy))
+               # Weights.append((wz))
+               # Weights.append((ww))
                 b1, b2, b3, b4 = struct.unpack('>BBBB', f.read(4))
                 Indices.append((b1, b2, b3, b4))
             if Version == 38 and basename.endswith('.milo_ps3'):
@@ -787,6 +802,19 @@ def Mesh(self, context, filename, file, basename, MatTexNames, MatTexFiles):
                 w = max(w_bits / float(1), -1.0)
                 Normals[index] = (x, y, z)
                 index += 1
+        if (Version == 36 or Version == 37) and not basename.endswith('.milo_wii'):
+            index = 0
+            for Weight in Weights:
+                w_bits = (weightv >> 30) & 3
+                z_bits = (weightv >> 20) & 1023
+                y_bits = (weightv >> 10) & 1023
+                x_bits = weightv & 1023
+                wx = float(x_bits) / float(1023)
+                wy = float(y_bits) / float(1023)
+                wz = float(z_bits) / float(1023)
+                ww = float(w_bits) / float(3)
+                Weights[index] = (ww, wz, wx, wy)
+                index += 1
         mesh = bpy.data.meshes.new(name=filename)
         obj = bpy.data.objects.new(filename, mesh)
         bpy.context.scene.collection.objects.link(obj)
@@ -810,12 +838,7 @@ def Mesh(self, context, filename, file, basename, MatTexNames, MatTexFiles):
         if len(Normals) > 0:
             mesh.normals_split_custom_set_from_vertices(Normals)
         mesh.update()
-        if BoneCount == 1:
-            index = 0
-            for ID in Indices:
-                Indices[index] = (0, 0, 0, 0)
-                index += 1
-        if BoneCount != 0:
+        try:
             bpy.ops.object.select_all(action='DESELECT')
             obj.select_set(True)
             bpy.context.view_layer.objects.active = obj
@@ -826,10 +849,19 @@ def Mesh(self, context, filename, file, basename, MatTexNames, MatTexFiles):
                     if group_name not in obj.vertex_groups:
                         obj.vertex_groups.new(name=group_name)
                     group_index = obj.vertex_groups[group_name].index
-                    obj.vertex_groups[group_index].add([vertex.index], weight, 'ADD')
+                    obj.vertex_groups[group_index].add([vertex.index], ww, 'ADD')
+                   # ^^^^ contains finger weights
+                    obj.vertex_groups[group_index].add([vertex.index], wz, 'ADD')
+                   # ^^^^ contains face weights
+                    obj.vertex_groups[group_index].add([vertex.index], wx, 'ADD')
+                   # ^^^^ contains . weights
+                    obj.vertex_groups[group_index].add([vertex.index], wy, 'ADD')
+                   # ^^^^ contains . weights
             mesh.update()
             print("Bone weights assigned to:", obj.name)                
-            obj.select_set(False)        
+            obj.select_set(False)
+        except:
+            print("Indices don't match up!")
         if len(MatName) > 0:
             bpy.context.view_layer.objects.active = obj
             mat = bpy.data.materials.get(MatName)
@@ -956,7 +988,7 @@ def Trans(basename, self, filename, file):
         pose_bone.location = LocalPos  
     bpy.ops.object.mode_set(mode='OBJECT')
         
-def TransAnim(self, file):
+def TransAnim(self, filename, file):
     f = io.BytesIO(file)
     bpy.context.scene.render.fps = 30
     if self.little_endian_setting:
@@ -969,7 +1001,9 @@ def TransAnim(self, file):
                 F1 = l_float(f)
                 F2 = l_float(f)
             AnimCount = l_int(f)
-            f.seek(25, 1)
+            for x in range(AnimCount):
+                AnimObject = l_numstring(f)
+            f.seek(25, 1)            
             TransObject = l_numstring(f)
             obj = bpy.data.objects.get(TransObject)
             if obj is None:
