@@ -226,7 +226,7 @@ class ImportMilo(Operator, ImportHelper):
                         if ".mesh" in name and "Trans" in directory:
                             Trans(basename, self, name, file)
                         if "TransAnim" in directory:
-                            TransAnim(self, name, file)
+                            TransAnim(self, name, basename, file)
                         elif "PropAnim" in directory:
                             PropAnim(self, file)
                 else:
@@ -278,13 +278,20 @@ class ImportMilo(Operator, ImportHelper):
                             if ".mesh" in name and "Trans" in directory:
                                 Trans(basename, self, name, file)
                             if "TransAnim" in directory:
-                                TransAnim(self, name, file)
+                                TransAnim(self, name, basename, file)
                             elif "PropAnim" in directory:
                                 PropAnim(self, file)
                     if Version < 32:
                         rest_file = f.read()
                         files = rest_file.split(b'\xAD\xDE\xAD\xDE')
+                        min_length = min(len(dirs), len(filenames))
+                        if len(files) > min_length:
+                            files = files[:min_length]
+                        if dirs and filenames and dirs[0] == "ObjectDir":
+                            dirs.pop(0)
+                            filenames.pop(0)
                         for directory, name, file in zip(dirs, filenames, files):
+                            print(directory, name, file[:4])
                             if ".mat" in name and "Mat" in directory:
                                 MatTexNames.append(name)
                                 MatTexFiles.append(file)
@@ -296,8 +303,10 @@ class ImportMilo(Operator, ImportHelper):
                                 Mesh(self, context, name, file, basename, MatTexNames, MatTexFiles)
                             if ".mesh" in name and "Trans" in directory:
                                 Trans(basename, self, name, file)
+                            if "bone" in name and "Mesh" in directory:
+                                MeshTrans(basename, self, name, file)
                             if "TransAnim" in directory:
-                                TransAnim(self, name, file)
+                                TransAnim(self, name, basename, file)
                             elif "PropAnim" in directory:
                                 PropAnim(self, file)
 
@@ -438,9 +447,8 @@ def Tex(basename, self, filename, file):
                 else:
                     out.write(Bitmap)
                 print("Converted + exported texture:", filename)            
-    except:
-        print("Invalid texture")
-        return
+    except Exception as e:
+        print(e)
         
 def Mesh(self, context, filename, file, basename, MatTexNames, MatTexFiles):
     f = io.BytesIO(file)
@@ -556,7 +564,7 @@ def Mesh(self, context, filename, file, basename, MatTexNames, MatTexFiles):
             (0.0, 0.0, 0.0, 1.0),
         ))
         mesh.from_pydata(Verts, [], Faces)
-       # mesh.use_auto_smooth = True
+        mesh.use_auto_smooth = True
         uv_layer = mesh.uv_layers.new(name="UVMap")
         for face in mesh.polygons:
             face.use_smooth = True
@@ -579,10 +587,7 @@ def Mesh(self, context, filename, file, basename, MatTexNames, MatTexFiles):
                     if group_name not in obj.vertex_groups:
                         obj.vertex_groups.new(name=group_name)
                     group_index = obj.vertex_groups[group_name].index
-                    obj.vertex_groups[group_index].add([vertex.index], wx, 'ADD')
-                    obj.vertex_groups[group_index].add([vertex.index], wy, 'REPLACE')
-                    obj.vertex_groups[group_index].add([vertex.index], wz, 'ADD')
-                   # obj.vertex_groups[group_index].add([vertex.index], ww, 'ADD')
+                    obj.vertex_groups[group_index].add([vertex.index], weight, 'ADD')
             mesh.update()
             print("Bone weights assigned to:", obj.name)                
         except IndexError:
@@ -702,11 +707,19 @@ def Mesh(self, context, filename, file, basename, MatTexNames, MatTexFiles):
                 Verts.append((x, y, z))
                 u, v = struct.unpack('>ee', f.read(4))
                 UVs.append((u, v))
-                normals = b_int(f)
-                Normals.append(normals)
+                normalv = b_int(f)
+                nx = float(normalv & 1023) / float(1023)
+                ny = float((normalv >> 10) & 1023) / float(1023)
+                nz = float((normalv >> 20) & 1023) / float(1023)
+                nw = float((normalv >> 30) & 3) / float(3)
+                Normals.append((nx, ny, nz, nw))
                 f.seek(4, 1)
-                w1, w2, w3, w4 = struct.unpack('>BBBB', f.read(4))
-                Weights.append((w1 / 255.0, w2 / 255.0, w3 / 255.0, w4 / 255.0))
+                weightv = b_int(f)
+                wx = float(weightv & 1023) / float(1023)
+                wy = float((weightv >> 10) & 1023) / float(1023)
+                wz = float((weightv >> 20) & 1023) / float(1023)
+                ww = float((weightv >> 30) & 3) / float(3)
+                Weights.append((ww, wz, wx, wy))
                 b1, b2, b3, b4 = struct.unpack('>HHHH', f.read(8))
                 Indices.append((b1, b2, b3, b4))
             elif (Version == 36 or Version == 37) and basename.endswith('.milo_xbox'):
@@ -715,8 +728,12 @@ def Mesh(self, context, filename, file, basename, MatTexNames, MatTexFiles):
                 f.seek(4, 1)
                 u, v = struct.unpack('>ee', f.read(4))
                 UVs.append((u, v))
-                normals = b_int(f)
-                Normals.append(normals)
+                normalv = b_int(f)
+                nx = float(normalv & 1023) / float(1023)
+                ny = float((normalv >> 10) & 1023) / float(1023)
+                nz = float((normalv >> 20) & 1023) / float(1023)
+                nw = float((normalv >> 30) & 3) / float(3)
+                Normals.append((nx, ny, nz, nw))
                 f.seek(4, 1)
                 weightv = b_int(f)
                # w_bits = (weightv >> 30) & 3
@@ -784,10 +801,10 @@ def Mesh(self, context, filename, file, basename, MatTexNames, MatTexFiles):
         if (Version == 36 or Version == 37) and not basename.endswith('.milo_wii'):
             index = 0
             for Normal in Normals:
-                w_bits = (Normal >> 30) & 3
-                z_bits = (Normal >> 20) & 1023
-                y_bits = (Normal >> 10) & 1023
-                x_bits = Normal & 1023
+                w_bits = (normalv >> 30) & 3
+                z_bits = (normalv >> 20) & 1023
+                y_bits = (normalv >> 10) & 1023
+                x_bits = normalv & 1023
                 if x_bits > 512:
                     x_bits = -1 * (~((x_bits - 1) & (1023 >> 1)))
                 if y_bits > 512:
@@ -849,14 +866,14 @@ def Mesh(self, context, filename, file, basename, MatTexNames, MatTexFiles):
                     if group_name not in obj.vertex_groups:
                         obj.vertex_groups.new(name=group_name)
                     group_index = obj.vertex_groups[group_name].index
-                    obj.vertex_groups[group_index].add([vertex.index], ww, 'ADD')
-                   # ^^^^ contains finger weights
-                    obj.vertex_groups[group_index].add([vertex.index], wz, 'ADD')
-                   # ^^^^ contains face weights
                     obj.vertex_groups[group_index].add([vertex.index], wx, 'ADD')
                    # ^^^^ contains . weights
                     obj.vertex_groups[group_index].add([vertex.index], wy, 'ADD')
                    # ^^^^ contains . weights
+                    obj.vertex_groups[group_index].add([vertex.index], wz, 'ADD')
+                   # ^^^^ contains face weights
+                    obj.vertex_groups[group_index].add([vertex.index], ww, 'ADD')
+                   # ^^^^ contains finger weights
             mesh.update()
             print("Bone weights assigned to:", obj.name)                
             obj.select_set(False)
@@ -886,25 +903,45 @@ def Mesh(self, context, filename, file, basename, MatTexNames, MatTexFiles):
                     mat = bpy.data.materials.get(name)
                     if mat:
                         f = io.BytesIO(file)
-                        f.seek(21)
-                        r = b_float(f)
-                        g = b_float(f)
-                        b = b_float(f)
-                        a = b_float(f)
-                        mat.diffuse_color = (r, g, b, a)
-                        f.seek(105)
-                        TexName = b_numstring(f)
-                        tex = bpy.data.textures.get(TexName)
-                        if tex:
-                            if not mat.use_nodes:
-                                mat.use_nodes = True
-                            bsdf = mat.node_tree.nodes.get("Principled BSDF")
-                            if bsdf:
-                                tex_node = mat.node_tree.nodes.new('ShaderNodeTexImage')
-                                tex_node.image = tex.image
-                                links = mat.node_tree.links
-                                links.new(bsdf.inputs['Base Color'], tex_node.outputs['Color'])            
-
+                        Version = b_int(f)
+                        if Version == 28:
+                            f.seek(21)
+                            r = b_float(f)
+                            g = b_float(f)
+                            b = b_float(f)
+                            a = b_float(f)
+                            mat.diffuse_color = (r, g, b, a)
+                            f.seek(101)
+                            TexName = b_numstring(f)
+                            tex = bpy.data.textures.get(TexName)
+                            if tex:
+                                if not mat.use_nodes:
+                                    mat.use_nodes = True
+                                bsdf = mat.node_tree.nodes.get("Principled BSDF")
+                                if bsdf:
+                                    tex_node = mat.node_tree.nodes.new('ShaderNodeTexImage')
+                                    tex_node.image = tex.image
+                                    links = mat.node_tree.links
+                                    links.new(bsdf.inputs['Base Color'], tex_node.outputs['Color'])                        
+                        else:
+                            f.seek(21)
+                            r = b_float(f)
+                            g = b_float(f)
+                            b = b_float(f)
+                            a = b_float(f)
+                            mat.diffuse_color = (r, g, b, a)
+                            f.seek(105)
+                            TexName = b_numstring(f)
+                            tex = bpy.data.textures.get(TexName)
+                            if tex:
+                                if not mat.use_nodes:
+                                    mat.use_nodes = True
+                                bsdf = mat.node_tree.nodes.get("Principled BSDF")
+                                if bsdf:
+                                    tex_node = mat.node_tree.nodes.new('ShaderNodeTexImage')
+                                    tex_node.image = tex.image
+                                    links = mat.node_tree.links
+                                    links.new(bsdf.inputs['Base Color'], tex_node.outputs['Color'])                    
                             
     
 def Trans(basename, self, filename, file):        
@@ -979,16 +1016,74 @@ def Trans(basename, self, filename, file):
     bpy.ops.object.mode_set(mode='POSE')
     pose_bone = armature_obj.pose.bones.get(filename)
     if pose_bone:
+        if "hair" in filename:
+            pose_bone.matrix_basis = mathutils.Matrix((
+                (WorldUpper[0], WorldUpper[3], WorldUpper[6], 0.0),
+                (WorldUpper[1], WorldUpper[4], WorldUpper[7], 0.0),
+                (WorldUpper[2], WorldUpper[5], WorldUpper[8], 0.0),
+                (0.0, 0.0, 0.0, 1.0),
+            ))
+            pose_bone.location = WorldPos
+        else:
+            pose_bone.matrix_basis = mathutils.Matrix((
+                (LocalUpper[0], LocalUpper[3], LocalUpper[6], 0.0),
+                (LocalUpper[1], LocalUpper[4], LocalUpper[7], 0.0),
+                (LocalUpper[2], LocalUpper[5], LocalUpper[8], 0.0),
+                (0.0, 0.0, 0.0, 1.0),
+            ))
+            pose_bone.location = LocalPos  
+    bpy.ops.object.mode_set(mode='OBJECT')
+
+def MeshTrans(basename, self, filename, file):        
+    f = io.BytesIO(file)
+    f.seek(21)
+    LocalUpper = struct.unpack('>9f', f.read(36))
+    LocalPos = struct.unpack('>3f', f.read(12))
+    WorldUpper = struct.unpack('>9f', f.read(36))
+    WorldPos = struct.unpack('>3f', f.read(12))
+    f.seek(117)
+    Target = b_numstring(f)
+    f.seek(1, 1)
+    ParentName = b_numstring(f)
+    if "Armature" in bpy.data.armatures:
+        armature_data = bpy.data.armatures["Armature"]
+    else:
+        armature_data = bpy.data.armatures.new("Armature")
+    if "Armature" in bpy.data.objects:
+        armature_obj = bpy.data.objects["Armature"]
+    else:
+        armature_obj = bpy.data.objects.new("Armature", armature_data)
+        bpy.context.scene.collection.objects.link(armature_obj)
+    bpy.context.view_layer.objects.active = armature_obj
+    bpy.ops.object.mode_set(mode='EDIT')
+    edit_bone = armature_obj.data.edit_bones.get(filename)
+    if edit_bone is None:
+        edit_bone = armature_obj.data.edit_bones.new(filename)
+        edit_bone.head = (0, 0, 0)
+        edit_bone.tail = (0, 1, 0)
+        edit_bone.use_deform = True
+    parent_bone = armature_obj.data.edit_bones.get(ParentName)
+    if parent_bone is None:
+        parent_bone = armature_obj.data.edit_bones.new(ParentName)
+        parent_bone.head = (0, 0, 0)
+        parent_bone.tail = (0, 1, 0)
+        parent_bone.use_deform = True
+    if parent_bone:
+        edit_bone.parent = parent_bone
+    bpy.ops.object.mode_set(mode='POSE')
+    pose_bone = armature_obj.pose.bones.get(filename)
+    if pose_bone:
         pose_bone.matrix_basis = mathutils.Matrix((
-            (LocalUpper[0], LocalUpper[3], LocalUpper[6], 0.0),
-            (LocalUpper[1], LocalUpper[4], LocalUpper[7], 0.0),
-            (LocalUpper[2], LocalUpper[5], LocalUpper[8], 0.0),
+            (WorldUpper[0], WorldUpper[3], WorldUpper[6], 0.0),
+            (WorldUpper[1], WorldUpper[4], WorldUpper[7], 0.0),
+            (WorldUpper[2], WorldUpper[5], WorldUpper[8], 0.0),
             (0.0, 0.0, 0.0, 1.0),
         ))
-        pose_bone.location = LocalPos  
+        pose_bone.location = WorldPos  
     bpy.ops.object.mode_set(mode='OBJECT')
-        
-def TransAnim(self, filename, file):
+    
+def TransAnim(self, filename, basename, file):
+    print(filename)
     f = io.BytesIO(file)
     bpy.context.scene.render.fps = 30
     if self.little_endian_setting:
@@ -1029,8 +1124,35 @@ def TransAnim(self, filename, file):
                 Pos = l_float(f)
                 obj.scale = Scale
                 obj.keyframe_insert("scale", frame=Pos)
-        elif Version == 6:
+        elif Version == 6 and basename.endswith('.milo_xbox'):
             f.seek(29)
+            TransObject = l_numstring(f)
+            obj = bpy.data.objects.get(TransObject)
+            if obj is None:
+                return
+            RotKeysCount = l_int(f)
+            for x in range(RotKeysCount):
+                Quat = struct.unpack('ffff', f.read(16))
+                Pos = l_float(f)
+                obj.rotation_mode = 'QUATERNION'
+                obj.rotation_quaternion = (Quat[3], Quat[0], Quat[1], Quat[2])
+                obj.keyframe_insert("rotation_quaternion", frame=Pos)
+            TransKeysCount = l_int(f)
+            for x in range(TransKeysCount):
+                Location = struct.unpack('fff', f.read(12))
+                Pos = l_float(f)
+                obj.location = Location
+                obj.keyframe_insert("location", frame=Pos)
+            TransAnimOwner = l_numstring(f)
+            f.seek(2, 1)
+            ScaleKeysCount = l_int(f)
+            for x in range(ScaleKeysCount):
+                Scale = struct.unpack('fff', f.read(12))
+                Pos = l_float(f)
+                obj.scale = Scale
+                obj.keyframe_insert("scale", frame=Pos)
+        elif Version == 6 and basename.endswith('.milo_ps2'):
+            f.seek(25)
             TransObject = l_numstring(f)
             obj = bpy.data.objects.get(TransObject)
             if obj is None:
