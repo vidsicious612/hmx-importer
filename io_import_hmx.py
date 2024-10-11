@@ -31,6 +31,12 @@ def l_int(f):
 def b_int(f):
     return struct.unpack('>I', f.read(4))[0]
 
+def b_bool(f):
+    struct.unpack('?', f.read(1))
+
+def l_bool(f):
+    struct.unpack('>?', f.read(1))
+
 def b_float(f):
     return struct.unpack('>f', f.read(4))[0]
 
@@ -58,7 +64,7 @@ class ImportMilo(Operator, ImportHelper):
     filename_ext = ".milo_ps3"
 
     filter_glob: StringProperty(
-        default="*.milo_ps3;*.milo_xbox;*.milo_wii;*.rnd_ps2;*.milo_ps2;*.rnd;*.dds;*.ccs",
+        default="*.milo_ps3;*.milo_xbox;*.milo_wii;*.rnd_ps2;*.milo_ps2;*.rnd;*.dds;*.ccs;*.lit;*.cam",
         options={'HIDDEN'},
     )
 
@@ -229,6 +235,10 @@ class ImportMilo(Operator, ImportHelper):
                             TransAnim(self, name, basename, file)
                         elif "PropAnim" in directory:
                             PropAnim(self, file)
+                       # if ".lit" in name and "Light" in directory:
+                       #     Light(self, file, name)
+                       # elif ".cam" in name and "Cam" in directory:
+                       #      Cam(self, file)
                 else:
                     Version = b_int(f)
                     DirType = b_numstring(f)
@@ -281,6 +291,10 @@ class ImportMilo(Operator, ImportHelper):
                                 TransAnim(self, name, basename, file)
                             elif "PropAnim" in directory:
                                 PropAnim(self, file)
+                           # if ".lit" in name and "Light" in directory:
+                           #     Light(self, file, name)
+                           # elif ".cam" in name and "Cam" in directory:
+                           #     Cam(self, file)
                     if Version < 32:
                         rest_file = f.read()
                         files = rest_file.split(b'\xAD\xDE\xAD\xDE')
@@ -305,10 +319,14 @@ class ImportMilo(Operator, ImportHelper):
                                 Trans(basename, self, name, file)
                             if "bone" in name and "Mesh" in directory:
                                 MeshTrans(basename, self, name, file)
-                            if "TransAnim" in directory:
-                                TransAnim(self, name, basename, file)
+                           # if "TransAnim" in directory:
+                           #     TransAnim(self, name, basename, file)
                             elif "PropAnim" in directory:
                                 PropAnim(self, file)
+                           # if ".lit" in name and "Light" in directory:
+                           #     Light(self, file, name,)
+                           # elif ".cam" in name and "Cam" in directory:
+                           #     Cam(self, file)
 
         return {'FINISHED'}                
 
@@ -589,7 +607,7 @@ def Mesh(self, context, filename, file, basename, MatTexNames, MatTexFiles):
                     group_index = obj.vertex_groups[group_name].index
                     obj.vertex_groups[group_index].add([vertex.index], weight, 'ADD')
             mesh.update()
-            print("Bone weights assigned to:", obj.name)                
+            print("Bone weights assigned to:", obj.name, group_index)                
         except IndexError:
             print("Indices don't match up!")
         obj.select_set(False)                                   
@@ -678,7 +696,8 @@ def Mesh(self, context, filename, file, basename, MatTexNames, MatTexFiles):
         UVs = []
         Indices = []
         for i in range(VertCount):
-            if (basename.endswith('.milo_ps3') or basename.endswith('.milo_xbox')) and (Version == 34 or (Version == 36 and Platform == 0)):
+#lego rockband
+            if Version == 34 and basename.endswith('.milo_xbox'):
                 x, y, z, w = struct.unpack('>ffff', f.read(16))
                 Verts.append((x, y, z))                
                 nx, ny, nz, nw = struct.unpack('>ffff', f.read(16))
@@ -702,26 +721,34 @@ def Mesh(self, context, filename, file, basename, MatTexNames, MatTexFiles):
                 b1, b2, b3, b4 = struct.unpack('>HHHH', f.read(8))
                 Indices.append((b1, b2, b3, b4))
                 f.seek(16, 1)
+#                           TBRB             GDRB
             elif (Version == 36 or Version == 37) and basename.endswith('.milo_ps3'):
+               # print("MILO_PS3 format", "mesh version", Version)
                 x, y, z = struct.unpack('>fff', f.read(12))
                 Verts.append((x, y, z))
                 u, v = struct.unpack('>ee', f.read(4))
                 UVs.append((u, v))
-                normalv = b_int(f)
-                nx = float(normalv & 1023) / float(1023)
-                ny = float((normalv >> 10) & 1023) / float(1023)
-                nz = float((normalv >> 20) & 1023) / float(1023)
-                nw = float((normalv >> 30) & 3) / float(3)
-                Normals.append((nx, ny, nz, nw))
-                f.seek(4, 1)
-                weightv = b_int(f)
-                wx = float(weightv & 1023) / float(1023)
-                wy = float((weightv >> 10) & 1023) / float(1023)
-                wz = float((weightv >> 20) & 1023) / float(1023)
-                ww = float((weightv >> 30) & 3) / float(3)
-                Weights.append((ww, wz, wx, wy))
+               # no normals on ps3
+               # nx, ny, nz, nw = struct.unpack('>fff', f.read(12))
+               # Normals.append((nx, ny, nz, nw))
+               # no normals on ps3
+                f.seek(8, 1)
+#  / 255
+                w11, w22, w33, w44 = struct.unpack('>BBBB', f.read(4))
+                w1 = w11 / 255.0
+                w2 = w22 / 255.0
+                w4 = w33 / 255.0
+                w3 = w44 / 255.0
+                Weights.append((w1, w2, w3, w4))
+               # Weights.append((w1, w2, w3, w4))
                 b1, b2, b3, b4 = struct.unpack('>HHHH', f.read(8))
+               # b1 = struct.unpack('H', f.read(2))
+               # b2 = struct.unpack('H', f.read(2))
+               # b3 = struct.unpack('H', f.read(2))
+               # b4 = struct.unpack('H', f.read(2))
                 Indices.append((b1, b2, b3, b4))
+                print("weights", w1, w2, w3, w4, "bone ids", b1, b2, b3, b4)
+#                           TBRB             GDRB
             elif (Version == 36 or Version == 37) and basename.endswith('.milo_xbox'):
                 x, y, z = struct.unpack('>fff', f.read(12))
                 Verts.append((x, y, z))
@@ -733,24 +760,38 @@ def Mesh(self, context, filename, file, basename, MatTexNames, MatTexFiles):
                 ny = float((normalv >> 10) & 1023) / float(1023)
                 nz = float((normalv >> 20) & 1023) / float(1023)
                 nw = float((normalv >> 30) & 3) / float(3)
-                Normals.append((nx, ny, nz, nw))
+                Normals.append((nx, ny, nz))
+       #         w_bits = (normalv >> 30) & 3
+       #         z_bits = (normalv >> 20) & 1023
+       #         y_bits = (normalv >> 10) & 1023
+       #         x_bits = normalv & 1023
+       #         if x_bits > 512:
+       #             x_bits = -1 * (~((x_bits - 1) & (1023 >> 1)))
+       #         if y_bits > 512:
+       #             y_bits = -1 * (~((y_bits - 1) & (1023 >> 1)))
+       #         if z_bits > 512:
+       #             z_bits = -1 * (~((z_bits - 1) & (1023 >> 1)))
+       #         if w_bits > 1:
+       #             w_bits = -1 * (~((w_bits - 1) & (3 >> 1)))
                 f.seek(4, 1)
                 weightv = b_int(f)
-               # w_bits = (weightv >> 30) & 3
-               # z_bits = (weightv >> 20) & 1023
-               # y_bits = (weightv >> 10) & 1023
-               # x_bits = weightv & 1023
-                wx = float(weightv & 1023) / float(1023)
-                wy = float((weightv >> 10) & 1023) / float(1023)
-                wz = float((weightv >> 20) & 1023) / float(1023)
-                ww = float((weightv >> 30) & 3) / float(3)
-                Weights.append((ww, wz, wx, wy))
-               # Weights.append((wx))
-               # Weights.append((wy))
-               # Weights.append((wz))
-               # Weights.append((ww))
+                Ww_bits = (weightv >> 30) & 3
+                Wz_bits = (weightv >> 20) & 1023
+                Wy_bits = (weightv >> 10) & 1023
+                Wx_bits = weightv & 1023
+                w1 = float(Wx_bits) / float(1023)
+                w2 = float(Wy_bits) / float(1023)
+                w3 = float(Wz_bits) / float(1023)
+                w4 = float(Ww_bits) / float(3)
+                Weights.append((w1, w2, w3, w4))
+               # Weights = ((w1, w2, w3, w4))
+               # Weights.append((w1))
+               # Weights.append((w2))
+               # Weights.append((w3))
+               # Weights.append((w4))
                 b1, b2, b3, b4 = struct.unpack('>BBBB', f.read(4))
                 Indices.append((b1, b2, b3, b4))
+               # print("weightv", weightv, "wzyxbits", Ww_bits, Wz_bits, Wy_bits, Wx_bits, "xyzwweight", wx, wy, wz, ww, "bones", b1, b2, b3, b4, "xyz", x, y, z)
             if Version == 38 and basename.endswith('.milo_ps3'):
                 x, y, z = struct.unpack('>fff', f.read(12))
                 Verts.append((x, y, z))
@@ -798,7 +839,8 @@ def Mesh(self, context, filename, file, basename, MatTexNames, MatTexFiles):
         for x in range(BoneCount):
             BoneNames.append(b_numstring(f))
             TFM = struct.unpack('>12f', f.read(48))
-        if (Version == 36 or Version == 37) and not basename.endswith('.milo_wii'):
+# not basename.endswith('.milo_wii')
+        if (Version == 36 or Version == 37) and basename.endswith('.milo_xbox'):
             index = 0
             for Normal in Normals:
                 w_bits = (normalv >> 30) & 3
@@ -819,19 +861,19 @@ def Mesh(self, context, filename, file, basename, MatTexNames, MatTexFiles):
                 w = max(w_bits / float(1), -1.0)
                 Normals[index] = (x, y, z)
                 index += 1
-        if (Version == 36 or Version == 37) and not basename.endswith('.milo_wii'):
-            index = 0
-            for Weight in Weights:
-                w_bits = (weightv >> 30) & 3
-                z_bits = (weightv >> 20) & 1023
-                y_bits = (weightv >> 10) & 1023
-                x_bits = weightv & 1023
-                wx = float(x_bits) / float(1023)
-                wy = float(y_bits) / float(1023)
-                wz = float(z_bits) / float(1023)
-                ww = float(w_bits) / float(3)
-                Weights[index] = (ww, wz, wx, wy)
-                index += 1
+       # if (Version == 36 or Version == 37) and not basename.endswith('.milo_wii'):
+       #     index = 0
+       #     for Weight in Weights:
+       #         w_bits = (weightv >> 30) & 3
+       #         z_bits = (weightv >> 20) & 1023
+       #         y_bits = (weightv >> 10) & 1023
+       #         x_bits = weightv & 1023
+       #         w1 = float((weightv & 1023) / float(1023))
+       #         w2 = float((weightv >> 10) & 1023) / float(1023)
+       #         w3 = float((weightv >> 20) & 1023) / float(1023)
+       #         w4 = float((weightv >> 30) & 3) / float(3)
+       #         Weights[index] = (w1, w2, w3, w4)
+       #         index += 1
         mesh = bpy.data.meshes.new(name=filename)
         obj = bpy.data.objects.new(filename, mesh)
         bpy.context.scene.collection.objects.link(obj)
@@ -860,25 +902,52 @@ def Mesh(self, context, filename, file, basename, MatTexNames, MatTexFiles):
             obj.select_set(True)
             bpy.context.view_layer.objects.active = obj
             for i, vertex in enumerate(mesh.vertices):
-                group_names = [BoneNames[idx] for idx in Indices[i]]
-                group_weights = Weights[i]                            
-                for group_name, weight in zip(group_names, group_weights):
-                    if group_name not in obj.vertex_groups:
-                        obj.vertex_groups.new(name=group_name)
-                    group_index = obj.vertex_groups[group_name].index
-                    obj.vertex_groups[group_index].add([vertex.index], wx, 'ADD')
-                   # ^^^^ contains . weights
-                    obj.vertex_groups[group_index].add([vertex.index], wy, 'ADD')
-                   # ^^^^ contains . weights
-                    obj.vertex_groups[group_index].add([vertex.index], wz, 'ADD')
-                   # ^^^^ contains face weights
-                    obj.vertex_groups[group_index].add([vertex.index], ww, 'ADD')
-                   # ^^^^ contains finger weights
+                group_name1, group_name2, group_name3, group_name4 = group_names = [BoneNames[idx] for idx in Indices[i]]
+               # print("bone names", BoneNames, "length", len(BoneNames))
+                w1, w2, w3, w4 = Weights[i]
+               # Weights[i] = w1, w2, w3, w4
+               # w1, w2, w3, w4 =  w1, w2, w3, w4
+           # if len(BoneNames) == 1 
+           # just do one of these
+                for group_name in (group_names):
+                   # print("weight encoding")
+                    if group_name1 not in obj.vertex_groups:
+                        obj.vertex_groups.new(name=group_name1)
+                    group_index = obj.vertex_groups[group_name1].index
+                    obj.vertex_groups[group_name1].add([vertex.index], w4, 'ADD')
+                   # print("name", group_name1, "weight4", w4)
+
+                    if group_name2 not in obj.vertex_groups:
+                        obj.vertex_groups.new(name=group_name2)
+                    group_index = obj.vertex_groups[group_name2].index
+                    obj.vertex_groups[group_name2].add([vertex.index], w3, 'ADD')
+                   # print("name", group_name2, "weight3", w3)
+
+                    if group_name3 not in obj.vertex_groups:
+                        obj.vertex_groups.new(name=group_name3)
+                    group_index = obj.vertex_groups[group_name3].index
+                    obj.vertex_groups[group_name3].add([vertex.index], w2, 'ADD')
+                   # print("name", group_name3, "weight2", w2)
+
+                    if group_name4 not in obj.vertex_groups:
+                        obj.vertex_groups.new(name=group_name4)
+                    group_index = obj.vertex_groups[group_name4].index
+                    obj.vertex_groups[group_name4].add([vertex.index], w1, 'ADD')
+                   # print("name", group_name4, "weight1", w1)
+
+
+                   # print("group_names1", group_names[1], "group_names2", group_names[2],"group_name", group_name, "vertex.index", vertex.index, "4321weight", w4, w3, w2, w1)
+                   # print("groups", group_name1, group_name2, group_name3, group_name4, "vertex", vertex.index, "weightv", weightv, "wzyxbits", Wx_bits, Wy_bits, Wz_bits, Ww_bits, "1234weight", w1, w2, w3, w4, "xyz", x, y, z)
+#  "bone", b1, b2, b3, b4,
+                   # print("vertex", vertex.index, "weightv", weightv, "xbits", Wx_bits, "1weight", w1, "bone", b1, b2, b3, b4, "xyz", x, y, z)
+
             mesh.update()
-            print("Bone weights assigned to:", obj.name)                
+            print("Bone weights assigned to:", obj.name, group_index)                
             obj.select_set(False)
         except:
             print("Indices don't match up!")
+            print("BoneName length", BoneNames, len(BoneNames))
+
         if len(MatName) > 0:
             bpy.context.view_layer.objects.active = obj
             mat = bpy.data.materials.get(MatName)
@@ -911,7 +980,7 @@ def Mesh(self, context, filename, file, basename, MatTexNames, MatTexFiles):
                             b = b_float(f)
                             a = b_float(f)
                             mat.diffuse_color = (r, g, b, a)
-                            f.seek(101)
+                           # f.seek(101)
                             TexName = b_numstring(f)
                             tex = bpy.data.textures.get(TexName)
                             if tex:
@@ -924,15 +993,59 @@ def Mesh(self, context, filename, file, basename, MatTexNames, MatTexFiles):
                                     links = mat.node_tree.links
                                     links.new(bsdf.inputs['Base Color'], tex_node.outputs['Color'])                        
                         else:
+                 # version size + metadata size + blend size = file seek number/9+10=21
+                           # blend = b_float(f)
+   # 4h/ 00 00 00 00/01/02/03/04/05/06
+   # kBlendDest,             00
+   # kBlendSrc,              01
+   # kBlendAdd,              02
+   # kBlendSrcAlpha,         03
+   # kBlendSubtract,         04
+   # kBlendMultiply,         05
+   # kPreMultAlpha,          06
                             f.seek(21)
                             r = b_float(f)
                             g = b_float(f)
                             b = b_float(f)
                             a = b_float(f)
                             mat.diffuse_color = (r, g, b, a)
+                            print("diff rgb", r, g, b)
+                            alpha = b_float(f)
+                            prelit = b_bool(f)
+                            use_environ = b_bool(f)
+                            z_mode = b_float(f)
+   # 4h/ 00 00 00 00/01/02/03/04
+   # kZModeDisable,         00
+   # kZModeNormal,          01
+   # kZModeTransparent,     02
+   # kZModeForce,           03
+   # kZModeDecal,           04
+                            alpha_cut = b_bool(f)
+                            alpha_threshold = l_int(f)
+                            alpha_write = b_bool(f)
+                            tex_gen = b_float(f)
+   # 4h/ 00 00 00 00/01/02/03/04/05
+   # kTexGenNone,           00
+   # kTexGenXfm,            01
+   # kTexGenSphere,         02
+   # kTexGenProjected,      03
+   # kTexGenXfmOrigin,      04
+   # kTexGenEnviron,        05
+                            tex_wrap = b_float(f)
+   # 4h/ 00 00 00 00/01/02/03/04
+   # kTexWrapClamp,         00
+   # kTexWrapRepeat,        01
+   # kTexBorderBlack,       02
+   # kTexBorderWhite,       03
+   # kTexWrapMirror,        04
+                           # tex_xfm = 30h MATRIX
+                         # skip tex xfm. WE DONT NEED IT
+                            f.seek(30)
                             f.seek(105)
+                     # DIFFUSE TEXTURE
                             TexName = b_numstring(f)
                             tex = bpy.data.textures.get(TexName)
+                            print("material", MatName, "DIFF TEX name", TexName)
                             if tex:
                                 if not mat.use_nodes:
                                     mat.use_nodes = True
@@ -941,9 +1054,123 @@ def Mesh(self, context, filename, file, basename, MatTexNames, MatTexFiles):
                                     tex_node = mat.node_tree.nodes.new('ShaderNodeTexImage')
                                     tex_node.image = tex.image
                                     links = mat.node_tree.links
-                                    links.new(bsdf.inputs['Base Color'], tex_node.outputs['Color'])                    
+                                    links.new(bsdf.inputs['Base Color'], tex_node.outputs['Color'])
+                                                      # BSDF input#1
+                                    links.new(bsdf.inputs['Alpha'], tex_node.outputs['Alpha'])
+                                                      # BSDF input#4
+                            next_pass = b_numstring(f)
+                            intensify = b_bool(f)
+                            cull = b_bool(f)
+                            emissive_multiplier = b_float(f)
+                           # f.seek(10, 1)
+                           # specular rgb
+                            r = b_float(f)
+                            g = b_float(f)
+                            b = b_float(f)
+                            mat.specular_color = (r, g, b)
+                            print("spec rgb", r, g, b)
+                            specular_power = b_float(f)
+                          # most milos have this set to tex.tex
+                            normal_map = b_numstring(f)
+                       # emissive_map
+                       # BSDF input #26 on blender 4
+                            EMTexName = b_numstring(f)
+                            tex = bpy.data.textures.get(EMTexName)
+                            print("EMISSIVE TEX name", EMTexName)
+                            if tex:
+                                if not mat.use_nodes:
+                                    mat.use_nodes = True
+                                bsdf = mat.node_tree.nodes.get("Principled BSDF")
+                                if bsdf:
+                                    tex_node = mat.node_tree.nodes.new('ShaderNodeTexImage')
+                                    tex_node.image = tex.image
+                                    links = mat.node_tree.links
+                                    links.new(bsdf.inputs['Emission'], tex_node.outputs['Color'])
+                       # specular_map
+                       # BSDF input #13 on blender 4
+                       # BSDF Specular on blender 3
+                           # f.seek(167)
+                            SPECTexName = b_numstring(f)
+                            tex = bpy.data.textures.get(SPECTexName)
+                            print("SPEC TEX name", SPECTexName)
+                            if tex:
+                                if not mat.use_nodes:
+                                    mat.use_nodes = True
+                                bsdf = mat.node_tree.nodes.get("Principled BSDF")
+                                if bsdf:
+                                    tex_node = mat.node_tree.nodes.new('ShaderNodeTexImage')
+                                    tex_node.image = tex.image
+                                    links = mat.node_tree.links                   
+                                    links.new(bsdf.inputs['Specular'], tex_node.outputs['Color'])
+                                    # BSDF input#13 on blender 4/specular on blender 3
+                            environ_map = b_numstring(f)
+                           # reflection map??? just reuse the tex code from above^^^
+                            per_pixel_light = b_bool(f)
+                            stencil_mode = b_float(f)
+   # 4h/ 00 00 00 00/01/02
+   # kStencilIgnore,        00
+   # kStencilWrite,         01
+   # kStencilTest,          02
+                            fur = b_numstring(f)
+                            de_normal = b_float(f)
+                            anisotropy = b_float(f)
+                            norm_detail_tiling = b_float(f)
+                            norm_detail_strength = b_float(f)
+                       # norm_detail_map
+                       # BSDF input #5 on blender 4
+                            NTexName = b_numstring(f)
+                            tex = bpy.data.textures.get(NTexName)
+                            print("NORM TEX name", NTexName, "normal detail strength", norm_detail_strength)
+                            if tex:
+                                if not mat.use_nodes:
+                                    mat.use_nodes = True
+                                bsdf = mat.node_tree.nodes.get("Principled BSDF")
+                                if bsdf:
+                                    tex_node = mat.node_tree.nodes.new('ShaderNodeTexImage')
+                                    NORM_node = mat.node_tree.nodes.new('ShaderNodeNormalMap')
+                                    tex_node.image = tex.image
+                                    links = mat.node_tree.links
+                                   # TODO: make the strength value be 'norm_detail_strength'
+                                    links.new(NORM_node.inputs[1], tex_node.outputs['Color'])
+                                    links.new(bsdf.inputs['Normal'], NORM_node.outputs['Normal'])
+                                                      # BSDF input#5 on blender 4/normal on blender 3&4
+
+                            point_lights = b_bool(f)
+                            proj_lights = b_bool(f)
+                            fog = b_bool(f)
+                            fade_out = b_bool(f)
+                            color_adjust = b_bool(f)
+             #               rim_rgb
+                          #  r = b_float(f)
+                          #  g = b_float(f)
+                          #  b = b_float(f)
+                          #  mat.rim_color = (r, g, b)
+                          #  rim_power = b_float(f)
+                          #  rim_map = b_numstring(f)
+             # rim???? outer glow/outline glow??? just reuse the tex code from above^^^
+             # if we can even do that
+                          #  rim_always_show = b_bool(f)
+                          #  screen_aligned = b_bool(f)
+                          #  shader_varition = b_float(f)
+   # 4h/ 00 00 00 00/01/02
+   # kShaderVariationNone,  00
+   # kShaderVariationSkin,  01
+   # kShaderVariationHair,  02
+             #               specular2_rgb
+                          #  r = b_float(f)
+                          #  g = b_float(f)
+                          #  b = b_float(f)
+                          #  mat.specular2_color = (r, g, b)
+                          #  val_0x160 = b_float(f)
+                          #  val_0x170 = b_float(f)
+                          #  val_0x174 = b_float(f)
+                          #  val_0x178 = b_float(f)
+                          #  val_0x17c = b_float(f)
+             #               five weird varibles
+                          #  alpha_mask = b_numstring(f)
+                          #  ps3_force_trilinear = b_bool(f)
+             #  weird this is in xbox milos^
                             
-    
 def Trans(basename, self, filename, file):        
     f = io.BytesIO(file)
     if self.little_endian_setting:
@@ -997,6 +1224,25 @@ def Trans(basename, self, filename, file):
     else:
         armature_obj = bpy.data.objects.new("Armature", armature_data)
         bpy.context.scene.collection.objects.link(armature_obj)
+        bpy.ops.mesh.primitive_ico_sphere_add()
+        bpy.ops.mesh.primitive_cube_add()
+        bpy.ops.object.empty_add(type='PLAIN_AXES')
+
+
+
+# make skeleton have file name instead
+# useful for GDRB
+#    if Basename in bpy.data.armatures:
+#        armature_data = bpy.data.armatures[Basename]
+#    else:
+#        armature_data = bpy.data.armatures.new(Basename)
+#    if Armature in bpy.data.objects:
+#        armature_obj = bpy.data.objects[Basename]
+#    else:
+#        armature_obj = bpy.data.objects.new(Basename, armature_data)
+#        bpy.context.scene.collection.objects.link(armature_obj)
+#
+
     bpy.context.view_layer.objects.active = armature_obj
     bpy.ops.object.mode_set(mode='EDIT')
     edit_bone = armature_obj.data.edit_bones.get(filename)
@@ -1016,22 +1262,173 @@ def Trans(basename, self, filename, file):
     bpy.ops.object.mode_set(mode='POSE')
     pose_bone = armature_obj.pose.bones.get(filename)
     if pose_bone:
-        if "hair" in filename:
-            pose_bone.matrix_basis = mathutils.Matrix((
-                (WorldUpper[0], WorldUpper[3], WorldUpper[6], 0.0),
-                (WorldUpper[1], WorldUpper[4], WorldUpper[7], 0.0),
-                (WorldUpper[2], WorldUpper[5], WorldUpper[8], 0.0),
-                (0.0, 0.0, 0.0, 1.0),
-            ))
-            pose_bone.location = WorldPos
+       # if "hair" in filename:
+       #     bpy.ops.object.mode_set(mode='POSE')
+       #     pose_bone.matrix = mathutils.Matrix((
+       #         (WorldUpper[0], WorldUpper[3], WorldUpper[6], 0.0),
+       #         (WorldUpper[1], WorldUpper[4], WorldUpper[7], 0.0),
+       #         (WorldUpper[2], WorldUpper[5], WorldUpper[8], 0.0),
+       #         (0.0, 0.0, 0.0, 1.0),
+       #     ))
+       #     pose_bone.location = LocalPos
+       # if "hair" in ParentName:
+       #     bpy.ops.object.mode_set(mode='POSE')
+       #     pose_bone.matrix = mathutils.Matrix((
+       #         (WorldUpper[0], WorldUpper[3], WorldUpper[6], 0.0),
+       #         (WorldUpper[1], WorldUpper[4], WorldUpper[7], 0.0),
+       #         (WorldUpper[2], WorldUpper[5], WorldUpper[8], 0.0),
+       #         (0.0, 0.0, 0.0, 1.0),
+       #     ))
+       #     pose_bone.location = LocalPos
+      #  if "spine" in filename:
+      #      bpy.ops.object.mode_set(mode='POSE')
+      #      pose_bone.matrix_basis = mathutils.Matrix((
+      #          (WorldUpper[0], WorldUpper[3], WorldUpper[6], 0.0),
+      #          (WorldUpper[1], WorldUpper[4], WorldUpper[7], 0.0),
+      #          (WorldUpper[2], WorldUpper[5], WorldUpper[8], 0.0),
+      #          (0.0, 0.0, 0.0, 1.0),
+      #      ))
+      #      pose_bone.location = LocalPos
+      #  else:
+#^^^^^^^^^OLD PROBABLY UNNEEDED CODE^^^^^^^^^^^
+        pose_bone.matrix_basis = mathutils.Matrix((
+            (LocalUpper[0], LocalUpper[3], LocalUpper[6], 0.0),
+            (LocalUpper[1], LocalUpper[4], LocalUpper[7], 0.0),
+            (LocalUpper[2], LocalUpper[5], LocalUpper[8], 0.0),
+            (0.0, 0.0, 0.0, 1.0),
+        ))
+        pose_bone.location = LocalPos
+# BONE SHAPES
+# BONE SHAPES
+# BONE SHAPES
+# BONE SHAPES
+# BONE SHAPES
+# BONE SHAPES
+# the three or four eye bones
+        if (filename == "bone_L-eye.mesh" or filename == "bone_R-eye.mesh"):
+            print("eye bone. No bone shape wanted")
+        elif (filename == "bone_L-eye_back.mesh" or filename == "bone_R-eye_back.mesh"):
+            print("eye bone. No bone shape wanted")
+        elif (filename == "bone_L-lid.mesh" or filename == "bone_R-lid.mesh"):
+            print("eyelid bone. No bone shape wanted")
+        elif (filename == "bone_L-eyelid-low.mesh" or filename == "bone_R-eyelid-low.mesh"):
+            print("eyelid bone. No bone shape wanted")
+
+        elif "spot" in filename:
+            bpy.data.objects['Armature'].pose.bones[filename].custom_shape = bpy.data.objects['Cube']
+            bpy.data.objects["Armature"].pose.bones[filename].custom_shape_scale_xyz[0] = 0.1
+            bpy.data.objects["Armature"].pose.bones[filename].custom_shape_scale_xyz[1] = 0.25
+            bpy.data.objects["Armature"].pose.bones[filename].custom_shape_scale_xyz[2] = 0.1
+
+        elif (filename == "bone_head_lookat.mesh"):
+            bpy.data.objects['Armature'].pose.bones[filename].custom_shape = bpy.data.objects['Cube']
+            bpy.data.objects["Armature"].pose.bones[filename].custom_shape_scale_xyz[0] = 0.4
+            bpy.data.objects["Armature"].pose.bones[filename].custom_shape_scale_xyz[1] = 0.1
+            bpy.data.objects["Armature"].pose.bones[filename].custom_shape_scale_xyz[2] = 0.1
+        elif (filename == "bone_eyes.mesh"):
+            bpy.data.objects['Armature'].pose.bones[filename].custom_shape = bpy.data.objects['Icosphere']
+            bpy.data.objects["Armature"].pose.bones[filename].custom_shape_scale_xyz[0] = 0.3
+            bpy.data.objects["Armature"].pose.bones[filename].custom_shape_scale_xyz[1] = 0.3
+            bpy.data.objects["Armature"].pose.bones[filename].custom_shape_scale_xyz[2] = 0.3
+
+        elif (filename == "bone_guitar.mesh"):
+            bpy.data.objects['Armature'].pose.bones[filename].custom_shape = bpy.data.objects['Cube']
+            bpy.data.objects["Armature"].pose.bones[filename].custom_shape_scale_xyz[0] = 0.5
+            bpy.data.objects["Armature"].pose.bones[filename].custom_shape_scale_xyz[1] = 0.5
+            bpy.data.objects["Armature"].pose.bones[filename].custom_shape_scale_xyz[2] = 0.5
+
+        elif (filename == "bone_jaw.mesh"):
+            bpy.data.objects['Armature'].pose.bones[filename].custom_shape = bpy.data.objects['Cube']
+            bpy.data.objects["Armature"].pose.bones[filename].custom_shape_scale_xyz[0] = 0.25
+            bpy.data.objects["Armature"].pose.bones[filename].custom_shape_scale_xyz[1] = 0.1
+            bpy.data.objects["Armature"].pose.bones[filename].custom_shape_scale_xyz[2] = 0.1
+
+# microphone bones
+
+        elif (filename == "bone_mic.mesh"):
+            bpy.data.objects['Armature'].pose.bones[filename].custom_shape = bpy.data.objects['Cube']
+            bpy.data.objects["Armature"].pose.bones[filename].custom_shape_scale_xyz[0] = 0.25
+            bpy.data.objects["Armature"].pose.bones[filename].custom_shape_scale_xyz[1] = 0.5
+            bpy.data.objects["Armature"].pose.bones[filename].custom_shape_scale_xyz[2] = 0.5
+        elif (filename == "bone_mic_stand_top.mesh"):
+            bpy.data.objects['Armature'].pose.bones[filename].custom_shape = bpy.data.objects['Cube']
+            bpy.data.objects["Armature"].pose.bones[filename].custom_shape_scale_xyz[0] = 0.5
+            bpy.data.objects["Armature"].pose.bones[filename].custom_shape_scale_xyz[1] = 0.25
+            bpy.data.objects["Armature"].pose.bones[filename].custom_shape_scale_xyz[2] = 0.5
+        elif (filename == "bone_mic_stand_bottom.mesh"):
+            bpy.data.objects['Armature'].pose.bones[filename].custom_shape = bpy.data.objects['Cube']
+            bpy.data.objects["Armature"].pose.bones[filename].custom_shape_scale_xyz[0] = 1.0
+            bpy.data.objects["Armature"].pose.bones[filename].custom_shape_scale_xyz[1] = 1.0
+            bpy.data.objects["Armature"].pose.bones[filename].custom_shape_scale_xyz[2] = 0.25
+
+# the three head bones
+        elif (filename == "bone_head.mesh"):
+            bpy.data.objects['Armature'].pose.bones[filename].custom_shape = bpy.data.objects['Cube']
+            bpy.data.objects["Armature"].pose.bones[filename].custom_shape_scale_xyz[0] = 0.05
+            bpy.data.objects["Armature"].pose.bones[filename].custom_shape_scale_xyz[1] = 0.2
+            bpy.data.objects["Armature"].pose.bones[filename].custom_shape_scale_xyz[2] = 0.2
+        elif (filename == "bone_head_nod.mesh"):
+            bpy.data.objects['Armature'].pose.bones[filename].custom_shape = bpy.data.objects['Cube']
+            bpy.data.objects["Armature"].pose.bones[filename].custom_shape_scale_xyz[0] = 0.2
+            bpy.data.objects["Armature"].pose.bones[filename].custom_shape_scale_xyz[1] = 0.05
+            bpy.data.objects["Armature"].pose.bones[filename].custom_shape_scale_xyz[2] = 0.2
+        elif (filename == "bone_headscale.mesh"):
+            bpy.data.objects['Armature'].pose.bones[filename].custom_shape = bpy.data.objects['Cube']
+            bpy.data.objects["Armature"].pose.bones[filename].custom_shape_scale_xyz[0] = 0.2
+            bpy.data.objects["Armature"].pose.bones[filename].custom_shape_scale_xyz[1] = 0.2
+            bpy.data.objects["Armature"].pose.bones[filename].custom_shape_scale_xyz[2] = 0.05
+
+# the two neck bones
+        elif (filename == "bone_neck.mesh"):
+            bpy.data.objects['Armature'].pose.bones[filename].custom_shape = bpy.data.objects['Cube']
+            bpy.data.objects["Armature"].pose.bones[filename].custom_shape_scale_xyz[0] = 0.5
+            bpy.data.objects["Armature"].pose.bones[filename].custom_shape_scale_xyz[1] = 0.5
+            bpy.data.objects["Armature"].pose.bones[filename].custom_shape_scale_xyz[2] = 0.5
+        elif (filename == "bone_neckTwist.mesh"):
+            bpy.data.objects['Armature'].pose.bones[filename].custom_shape = bpy.data.objects['Cube']
+            bpy.data.objects["Armature"].pose.bones[filename].custom_shape_scale_xyz[0] = 0.8
+            bpy.data.objects["Armature"].pose.bones[filename].custom_shape_scale_xyz[1] = 0.25
+            bpy.data.objects["Armature"].pose.bones[filename].custom_shape_scale_xyz[2] = 0.25
+
+# reference point bones
+# these bone shouldn't have any weights *ASSUMING* use by the mic lean system to figure out where the mouth is
+        elif (filename == "bone_nose.mesh" or filename == "bone_forehead.mesh" or filename == "bone_chin.mesh"):
+            bpy.data.objects['Armature'].pose.bones[filename].custom_shape = bpy.data.objects['Empty']
+            bpy.data.objects["Armature"].pose.bones[filename].custom_shape_scale_xyz[0] = 1.0
+            bpy.data.objects["Armature"].pose.bones[filename].custom_shape_scale_xyz[1] = 1.0
+            bpy.data.objects["Armature"].pose.bones[filename].custom_shape_scale_xyz[2] = 1.0
+
+# arm twist bones
+        elif (filename == "bone_L-upperTwist1.mesh" or filename == "bone_R-upperTwist1.mesh"):
+            bpy.data.objects['Armature'].pose.bones[filename].custom_shape = bpy.data.objects['Empty']
+            bpy.data.objects["Armature"].pose.bones[filename].custom_shape_scale_xyz[0] = 1.0
+            bpy.data.objects["Armature"].pose.bones[filename].custom_shape_scale_xyz[1] = 1.0
+            bpy.data.objects["Armature"].pose.bones[filename].custom_shape_scale_xyz[2] = 1.0
+        elif (filename == "bone_L-upperTwist2.mesh" or filename == "bone_R-upperTwist2.mesh"):
+            bpy.data.objects['Armature'].pose.bones[filename].custom_shape = bpy.data.objects['Empty']
+            bpy.data.objects["Armature"].pose.bones[filename].custom_shape_scale_xyz[0] = 1.0
+            bpy.data.objects["Armature"].pose.bones[filename].custom_shape_scale_xyz[1] = 1.0
+            bpy.data.objects["Armature"].pose.bones[filename].custom_shape_scale_xyz[2] = 1.0
+
+        elif (filename == "bone_L-foreTwist1.mesh" or filename == "bone_R-foreTwist1.mesh"):
+            bpy.data.objects['Armature'].pose.bones[filename].custom_shape = bpy.data.objects['Empty']
+            bpy.data.objects["Armature"].pose.bones[filename].custom_shape_scale_xyz[0] = 1.0
+            bpy.data.objects["Armature"].pose.bones[filename].custom_shape_scale_xyz[1] = 1.0
+            bpy.data.objects["Armature"].pose.bones[filename].custom_shape_scale_xyz[2] = 1.0
+        elif (filename == "bone_L-foreTwist2.mesh" or filename == "bone_R-foreTwist2.mesh"):
+            bpy.data.objects['Armature'].pose.bones[filename].custom_shape = bpy.data.objects['Empty']
+            bpy.data.objects["Armature"].pose.bones[filename].custom_shape_scale_xyz[0] = 1.0
+            bpy.data.objects["Armature"].pose.bones[filename].custom_shape_scale_xyz[1] = 1.0
+            bpy.data.objects["Armature"].pose.bones[filename].custom_shape_scale_xyz[2] = 1.0
+
+
+
         else:
-            pose_bone.matrix_basis = mathutils.Matrix((
-                (LocalUpper[0], LocalUpper[3], LocalUpper[6], 0.0),
-                (LocalUpper[1], LocalUpper[4], LocalUpper[7], 0.0),
-                (LocalUpper[2], LocalUpper[5], LocalUpper[8], 0.0),
-                (0.0, 0.0, 0.0, 1.0),
-            ))
-            pose_bone.location = LocalPos  
+            bpy.data.objects['Armature'].pose.bones[filename].custom_shape = bpy.data.objects['Icosphere']
+            bpy.data.objects["Armature"].pose.bones[filename].custom_shape_scale_xyz[0] = 0.25
+            bpy.data.objects["Armature"].pose.bones[filename].custom_shape_scale_xyz[1] = 0.25
+            bpy.data.objects["Armature"].pose.bones[filename].custom_shape_scale_xyz[2] = 0.25
+
     bpy.ops.object.mode_set(mode='OBJECT')
 
 def MeshTrans(basename, self, filename, file):        
@@ -1293,11 +1690,150 @@ def CharClipSamples(self, file):
                 if Bone:
                     Bone.rotation_mode = 'QUATERNION'
                     Bone.rotation_quaternion = (w_float, x_float, -z_float, y_float)
+                    print("frame", frame_index, "bone", Bone, "ROTATION", Bone.rotation_quaternion, "LOCATION", Bone.location)
                     Bone.keyframe_insert("rotation_quaternion")
             elif "rotz" in Name:
                 rotz = f.read(2)
     Armature.location = (-3, 140, 0)
     Armature.rotation_euler = ((math.radians(-90)), 0, 0)
+
+#def CharCollide(self, file):
+# .coll
+# TODO
+#figure out how to read the data
+
+#def Group(self, file):
+# .grp
+# basically just an empty with objects parented to it
+#hh_lod00.grp contains lod00 meshes
+#hh_lod01.grp contains lod01 meshes
+#hh_lod02.grp contains lod02 meshes
+
+
+#def Light(self, file, name):
+#    f = io.BytesIO(file)
+    Version = b_int(f)
+#  3 (GH1), 6 (GH2), 9 (GH2 360), 14 (TBRB)
+#    print("light", Version, "name", name)
+#    #f.seek(12)
+# light_type_enum / light types in game
+#    kLightPoint,
+#    kLightDirectional,
+#    kLightFakeSpot,
+#    kLightFloorSpot,
+#    kLightShadowRef
+
+   # LightType = b_numstring(f)
+#    if Version == 13:
+#        f.seek(58, 1)
+#        NodeCount = b_int(f)
+       # trans = b_float(f)
+#        x, y, z = struct.unpack('>fff', f.read(12))
+       # Color = struct.unpack('fff', f.read(6))
+#        r = b_float(f)
+#        g = b_float(f)
+#        b = b_float(f)
+# c++ method for the color value from common.bt
+# define COLOR ((struct (r float) (g float) (b float)))
+#        Intensity = b_float(f)
+#        Range = b_float(f)
+#        light_type_enum = b_float(f)
+#        # should be a 1-5 or 0-4
+        #       ^I THINK^
+#        falloff_start = b_float(f)
+        # bool animate_color_from_preset
+#        animate_color_from_preset = struct.unpack('>?', f.read(1))
+        # bool animate_position_from_preset
+#        animate_position_from_preset = struct.unpack('>?', f.read(1))
+#        topradius = b_float(f)
+#        botradius = b_float(f)
+#        Smoothness = b_float(f)
+#        Displacement = b_float(f)
+#        texture = b_float(f)
+# Projected floor spot texture
+      # Intensity = b_float(f)
+      # Intensity = b_float(f
+#        print("xyz", x, y, z, "RGBcolor", r, g, b, "intensity", Intensity, "range", Range, "light_type_enum", light_type_enum, "falloff", falloff_start,"animate_color_from_preset", animate_color_from_preset, "animate_position_from_preset", animate_position_from_preset, "topradius", topradius, "botradius", botradius, "smoothness", Smoothness, "displacement", Displacement, "texture", texture)
+       # f.seek(8, 1)
+#        return
+#    elif Version == 16:
+#        f.seek(59, 1)
+# lamp_data = bpy.data.lights.new(name="New Light", type='POINT')
+# lamp_object = bpy.data.objects.new(name="New Light", object_data=lamp_data)
+# view_layer.active_layer_collection.collection.objects.link(lamp_object)
+# lamp_object.location = (5.0, 5.0, 5.0)
+# lamp_object.select_set(True)
+# view_layer.objects.active = lamp_object
+
+#def Cam(self, file):
+#    f = io.BytesIO(file)
+#    Version = b_int(f)
+# 9 (GH1), 12 (GH2/GH2 360/TBRB)
+#    f.seek(12)
+#    AnimType = b_numstring(f)
+#    if Version == 15:
+#        f.seek(46, 1)
+#        NodeCount = b_int(f)
+#        for x in range(NodeCount):
+#            Name = b_numstring(f)
+#            FloatCount = b_int(f)
+#            for x in range(FloatCount):
+#                near_plane = b_float(f)
+#                far_plane = b_float(f)
+#                Y_fov = b_float(f)
+#        f.seek(8, 1)
+#    elif Version == 16:
+#        f.seek(59, 1)
+
+#def BandCamShot(self, file):
+# .shot
+# just create an empty for this if it has location data with whatever values it has in the name
+# same for EventTrigger/.trig
+
+#def TexBlendController(self, file):
+# .texblendctl
+# TexBlendController: TexBlendController.texblendctl
+
+#def EventTrigger(self, file):
+# .trig
+
+#def TriggerGroup(self, file):
+# .tgrp
+# greenday rockband only????
+
+#def Spotlight(self, file):
+# .spot
+
+#def Environ(self, file):
+# .env
+
+#def WorldInstance(self, file):
+# .
+
+#def CharInterest(self, file):
+# .intr
+
+#def WorldDir(self, file):
+# .intr
+
+#def RndDir(self, file):
+# .
+
+#def CamAnim(self, file):
+# .cnm
+# greenday rockband only????
+
+#def Set(self, file):
+# .set
+# greenday rockband only????
+
+#def LightPreset(self, file):
+# .pst
+# greenday rockband only????
+
+#def Flare(self, file):
+# .flare
+# greenday rockband only????
 
 def menu_func_import(self, context):
     self.layout.operator(ImportMilo.bl_idname, text="Milo Importer")
